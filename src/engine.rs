@@ -1,5 +1,4 @@
 use core::f64;
-use std::ops;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct NodeId(usize);
@@ -87,6 +86,15 @@ pub enum Op {
 pub struct Values(Vec<f64>);
 
 impl Values {
+    /// Creates and returns a buffer of the specified size, with every element
+    /// initialized to NaN.
+    /// 
+    /// This buffer is intended to be re-used when doing multiple forward and
+    /// backward passes over the same computation graph.
+    pub fn new(len: usize) -> Self {
+        Self(std::iter::repeat(f64::NAN).take(len).into_iter().collect())
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }
@@ -103,6 +111,15 @@ impl_index_node_id!(Values, f64);
 pub struct Gradients(Vec<f64>);
 
 impl Gradients {
+    /// Creates and returns a buffer of the specified size, with every element
+    /// initialized to NaN.
+    /// 
+    /// This buffer is intended to be re-used when doing multiple forward and
+    /// backward passes over the same computation graph.
+    pub fn new(len: usize) -> Self {
+        Self(std::iter::repeat(f64::NAN).take(len).into_iter().collect())
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }
@@ -206,24 +223,24 @@ pub mod tests {
     use super::*;
 
     fn test_binary(op: Binary, vc: f64, dcda: f64, dcdb: f64) {
+        // Construct computation graph.
         let mut operations = Operations::default();
         let a = operations.lit();
         let b = operations.lit();
         let c = operations.push(Op::Binary(op, a, b));
 
+        // Initialize buffers.
+        let mut values = Values::new(operations.len());
+        let mut gradients = Gradients::new(operations.len());
+
         // Forward pass
-        let mut values = Values::default();
-        values.resize(operations.len(), f64::NAN);
         values[a] = 3.0;
         values[b] = 4.0;
         operations.forward(&mut values);
         assert_eq!(values[c], vc);
 
         // Backward pass
-        let mut gradients = Gradients::default();
-        gradients.resize(operations.len(), f64::NAN);
         operations.backward(&values, &mut gradients, c);
-
         assert_eq!(gradients[a], dcda);
         assert_eq!(gradients[b], dcdb);
     }
