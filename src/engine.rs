@@ -4,6 +4,24 @@ use std::ops;
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct NodeId(usize);
 
+macro_rules! impl_index_node_id {
+    ($T:ty, $O:ty) => {
+        impl ::std::ops::Index<NodeId> for $T {
+            type Output = $O;
+            #[inline]
+            fn index(&self, index: NodeId) -> &Self::Output {
+                &self.0[index.0]
+            }
+        }
+        impl ::std::ops::IndexMut<NodeId> for $T {
+            #[inline]
+            fn index_mut(&mut self, index: NodeId) -> &mut Self::Output {
+                &mut self.0[index.0]
+            }
+        }
+    };
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Nullary {
     Literal,
@@ -69,48 +87,32 @@ pub enum Op {
 pub struct Values(Vec<f64>);
 
 impl Values {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
     pub fn resize(&mut self, new_len: usize, value: f64) {
         self.0.resize(new_len, value);
     }
 }
 
-impl ops::Index<NodeId> for Values {
-    type Output = f64;
-
-    fn index(&self, index: NodeId) -> &Self::Output {
-        &self.0[index.0]
-    }
-}
-
-impl ops::IndexMut<NodeId> for Values {
-    fn index_mut(&mut self, index: NodeId) -> &mut Self::Output {
-        &mut self.0[index.0]
-    }
-}
+impl_index_node_id!(Values, f64);
 
 /// A buffer storing gradients for the nodes in the computation graph respresented by `Operations`.
 #[derive(Debug, Default)]
 pub struct Gradients(Vec<f64>);
 
 impl Gradients {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
     pub fn resize(&mut self, new_len: usize, value: f64) {
         self.0.resize(new_len, value);
     }
 }
 
-impl ops::Index<NodeId> for Gradients {
-    type Output = f64;
-
-    fn index(&self, index: NodeId) -> &Self::Output {
-        &self.0[index.0]
-    }
-}
-
-impl ops::IndexMut<NodeId> for Gradients {
-    fn index_mut(&mut self, index: NodeId) -> &mut Self::Output {
-        &mut self.0[index.0]
-    }
-}
+impl_index_node_id!(Gradients, f64);
 
 #[derive(Debug, Default)]
 pub struct Operations(Vec<Op>);
@@ -148,6 +150,7 @@ impl Operations {
 
     pub fn forward(&self, values: &mut Values) {
         assert_eq!(self.0.len(), values.0.len());
+
         for (index, &op) in self.0.iter().enumerate() {
             let id = NodeId(index);
             match op {
@@ -161,6 +164,9 @@ impl Operations {
     }
 
     pub fn backward(&self, values: &Values, gradients: &mut Gradients, target: NodeId) {
+        assert_eq!(self.len(), values.len());
+        assert_eq!(self.len(), gradients.len());
+
         gradients[target] = 1.0;
         let mut todo = vec![target];
         let mut new_todo = vec![];
@@ -193,19 +199,7 @@ impl Operations {
     }
 }
 
-impl ops::Index<NodeId> for Operations {
-    type Output = Op;
-
-    fn index(&self, index: NodeId) -> &Self::Output {
-        &self.0[index.0]
-    }
-}
-
-impl ops::IndexMut<NodeId> for Operations {
-    fn index_mut(&mut self, index: NodeId) -> &mut Self::Output {
-        &mut self.0[index.0]
-    }
-}
+impl_index_node_id!(Operations, Op);
 
 #[cfg(test)]
 pub mod tests {
