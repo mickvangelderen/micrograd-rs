@@ -1,77 +1,61 @@
 use crate::engine::{NodeId, Operations};
 
-#[macro_export]
-macro_rules! compute {
-    // Looks like a function call...
-    ($ctx:expr, $f:ident ( $($args:tt)* )) => {
-        $crate::compute!(@split ($ctx) $f { } { } $($args)* )
-    };
+pub trait OperationsExt {
+    fn expr<T: Resolve>(&mut self, expr: T) -> NodeId;
+}
 
-    // Otherwise, return as-is.
-    ($ctx:expr, $e:expr) => { $e };
+impl OperationsExt for Operations {
+    fn expr<T: Resolve>(&mut self, expr: T) -> NodeId {
+        expr.resolve(self)
+    }
+}
 
-    // Splitting - we have to parse groups of tokens that form expressions
-    // ourselves, using :expr doesn't allow us to see if it is a function call
-    // later, see
-    // https://lukaswirth.dev/tlborm/decl-macros/minutiae/metavar-and-expansion.html. 
+pub trait Resolve {
+    fn resolve(self, ops: &mut Operations) -> NodeId;
+}
 
-    // End of input: push the current (if any) and finish.
-    (@split ($ctx:expr) $f:ident { $($args_acc:tt)* } { $($cur:tt)* }) => {
-        $crate::compute!(@call ($ctx) $f { $($args_acc)* [ $($cur)* ] })
-    };
+pub struct Expr<T>(T);
 
-    // Comma at top level: push current arg, reset it, continue.
-    (@split ($ctx:expr) $f:ident { $($args_acc:tt)* } { $($cur:tt)* } , $($rest:tt)* ) => {
-        $crate::compute!(@split ($ctx) $f { $($args_acc)* [ $($cur)* ] } { } $($rest)* )
-    };
+impl<T> Resolve for Expr<T> where T: Resolve {
+    fn resolve(self, ops: &mut Operations) -> NodeId {
+        self.0.resolve(ops)
+    }
+}
 
-    // Balanced group: parens — append as a single token to current.
-    (@split ($ctx:expr) $f:ident { $($args_acc:tt)* } { $($cur:tt)* } ( $($g:tt)* ) $($rest:tt)* ) => {
-        $crate::compute!(@split ($ctx) $f { $($args_acc)* } { $($cur)* ( $($g)* ) } $($rest)* )
-    };
-    // Brackets.
-    (@split ($ctx:expr) $f:ident { $($args_acc:tt)* } { $($cur:tt)* } [ $($g:tt)* ] $($rest:tt)* ) => {
-        $crate::compute!(@split ($ctx) $f { $($args_acc)* } { $($cur)* [ $($g)* ] } $($rest)* )
-    };
-    // Braces.
-    (@split ($ctx:expr) $f:ident { $($args_acc:tt)* } { $($cur:tt)* } { $($g:tt)* } $($rest:tt)* ) => {
-        $crate::compute!(@split ($ctx) $f { $($args_acc)* } { $($cur)* { $($g)* } } $($rest)* )
-    };
+impl Resolve for NodeId {
+    fn resolve(self, _: &mut Operations) -> NodeId { self }
+}
 
-    // Any other single token: append to current and continue.
-    (@split ($ctx:expr) $f:ident { $($args_acc:tt)* } { $($cur:tt)* } $t:tt $($rest:tt)* ) => {
-        $crate::compute!(@split ($ctx) $f { $($args_acc)* } { $($cur)* $t } $($rest)* )
-    };
+pub struct Add<L, R>(L, R);
 
-    // Calling
+impl<L: Resolve, R: Resolve> Resolve for Add<L, R>{
+    fn resolve(self, ops: &mut Operations) -> NodeId {
+        let a = self.0.resolve(ops);
+        let b = self.1.resolve(ops);
+        ops.add(a, b)
+    }
+}
 
-    (@call ($ctx:expr) $f:ident { }) => { ($ctx).$f() };
+pub fn add<L, R>(l: L, r: R) -> Expr<Add<L, R>> {
+    Expr(Add(l, r))
+}
 
-    (@call ($ctx:expr) $f:ident { [ $($a0:tt)* ] }) => {{
-        let a0 = $crate::compute!($ctx, $($a0)*);
-        ($ctx).$f(a0)
-    }};
+impl<L, R> std::ops::Add<Expr<R>> for Expr<L> {
+    type Output = Expr<Add<L, R>>;
 
-    (@call ($ctx:expr) $f:ident { [ $($a0:tt)* ] [ $($a1:tt)* ] }) => {{
-        let a0 = $crate::compute!($ctx, $($a0)*);
-        let a1 = $crate::compute!($ctx, $($a1)*);
-        ($ctx).$f(a0, a1)
-    }};
+    fn add(self, rhs: Expr<R>) -> Self::Output {
+        add(self.0, rhs.0)
+    }
+}
 
-    (@call ($ctx:expr) $f:ident { [ $($a0:tt)* ] [ $($a1:tt)* ] [ $($a2:tt)* ] }) => {{
-        let a0 = $crate::compute!($ctx, $($a0)*);
-        let a1 = $crate::compute!($ctx, $($a1)*);
-        let a2 = $crate::compute!($ctx, $($a2)*);
-        ($ctx).$f(a0, a1, a2)
-    }};
+pub struct Mul<L, R>(L, R);
 
-    (@call ($ctx:expr) $f:ident { [ $($a0:tt)* ] [ $($a1:tt)* ] [ $($a2:tt)* ] [ $($a3:tt)* ] }) => {{
-        let a0 = $crate::compute!($ctx, $($a0)*);
-        let a1 = $crate::compute!($ctx, $($a1)*);
-        let a2 = $crate::compute!($ctx, $($a2)*);
-        let a3 = $crate::compute!($ctx, $($a3)*);
-        ($ctx).$f(a0, a1, a2, a3)
-    }};
+impl<L: Resolve, R: Resolve> Resolve for Mul<L, R>{
+    fn resolve(self, ops: &mut Operations) -> NodeId {
+        let a = self.0.resolve(ops);
+        let b = self.1.resolve(ops);
+        ops.mul(a, b)
+    }
 }
 
 fn add_n<I: IntoIterator<Item = NodeId>>(args: I, ops: &mut Operations) -> Option<NodeId> {
@@ -83,27 +67,29 @@ fn add_n<I: IntoIterator<Item = NodeId>>(args: I, ops: &mut Operations) -> Optio
     Some(acc)
 }
 
-fn layer() {
-    let mut ops = Operations::default();
+fn lit_n(ops: &mut Operations, len: usize) -> Vec<NodeId> {
+    (0..len).map(|_| ops.lit()).collect()
+}
 
-    // inputs
-    let x00 = ops.lit();
-    let x01 = ops.lit();
-
-    // parameters
-    let a00_10 = ops.lit();
-    let a01_10 = ops.lit();
-    let b10 = ops.lit();
-
-    let a00_11 = ops.lit();
-    let a01_11 = ops.lit();
-    let b11 = ops.lit();
-
-    let all = add_n([x00, x01, a00_10], &mut ops);
-    
-    // outputs
-    let x10 = compute!(ops, add(add(mul(x00, a00_10), mul(x01, a01_10)), b10));
-    let x11 = compute!(ops, add(add(mul(x00, a00_11), mul(x01, a01_11)), b11));
-
-    
+fn fully_connected_layer(
+    ops: &mut Operations,
+    inputs: &[NodeId],
+    output_len: usize,
+) -> Vec<(Vec<NodeId>, NodeId, NodeId)> {
+    (0..output_len)
+        .map(|_| {
+            let weights = lit_n(ops, inputs.len());
+            let bias = ops.lit();
+            let output =
+                inputs
+                    .iter()
+                    .copied()
+                    .zip(weights.iter().copied())
+                    .fold(bias, |sum, (a, b)| {
+                        ops.expr(Add(sum, Mul(a, b)))
+                        // ops.expr(sum + a * b) // TODO: Make this work.
+                    });
+            (weights, bias, output)
+        })
+        .collect()
 }
