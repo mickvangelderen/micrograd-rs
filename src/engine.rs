@@ -135,7 +135,7 @@ impl_index_node_id!(Gradients, f64);
 pub struct Operations(Vec<Op>);
 
 impl Operations {
-    fn push(&mut self, operation: Op) -> NodeId {
+    pub fn push(&mut self, operation: Op) -> NodeId {
         let id = NodeId(self.0.len());
         self.0.push(operation);
         id
