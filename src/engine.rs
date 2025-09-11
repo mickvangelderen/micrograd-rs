@@ -1,48 +1,45 @@
 use core::f64;
 
+use crate::syntax::Expr;
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct NodeId(usize);
 
 macro_rules! impl_index_node_id {
     ($T:ty, $O:ty) => {
-        impl ::std::ops::Index<NodeId> for $T {
+        impl ::std::ops::Index<Expr<NodeId>> for $T {
             type Output = $O;
             #[inline]
-            fn index(&self, index: NodeId) -> &Self::Output {
-                &self.0[index.0]
+            fn index(&self, index: Expr<NodeId>) -> &Self::Output {
+                &self.0[index.0.0]
             }
         }
-        impl ::std::ops::IndexMut<NodeId> for $T {
+        impl ::std::ops::IndexMut<Expr<NodeId>> for $T {
             #[inline]
-            fn index_mut(&mut self, index: NodeId) -> &mut Self::Output {
-                &mut self.0[index.0]
+            fn index_mut(&mut self, index: Expr<NodeId>) -> &mut Self::Output {
+                &mut self.0[index.0.0]
             }
         }
     };
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum Nullary {
-    Literal,
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Unary {
-    Negate,
+    Neg,
 }
 
 impl Unary {
-    pub fn forward(self, a: f64) -> f64 {
+    fn forward(self, a: f64) -> f64 {
         match self {
-            Unary::Negate => -a,
+            Unary::Neg => -a,
         }
     }
 
     /// Given the unary function b(a) represented by this operation, returns the
     /// partial derivative db/da.
-    pub fn backward(self, _a: f64) -> f64 {
+    fn backward(self, _a: f64) -> f64 {
         match self {
-            Unary::Negate => -1.0,
+            Unary::Neg => -1.0,
         }
     }
 }
@@ -55,7 +52,7 @@ pub enum Binary {
 }
 
 impl Binary {
-    pub fn forward(self, a: f64, b: f64) -> f64 {
+    fn forward(self, a: f64, b: f64) -> f64 {
         match self {
             Binary::Add => a + b,
             Binary::Mul => a * b,
@@ -65,7 +62,7 @@ impl Binary {
 
     /// Given the binary function c(a, b) represented by this operation, returns
     /// the partial derivatives dc/da and dc/db.
-    pub fn backward(self, a: f64, b: f64) -> (f64, f64) {
+    fn backward(self, a: f64, b: f64) -> (f64, f64) {
         match self {
             Binary::Add => (1.0, 1.0),
             Binary::Mul => (b, a),
@@ -76,9 +73,9 @@ impl Binary {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Op {
-    Nullary(Nullary),
-    Unary(Unary, NodeId),
-    Binary(Binary, NodeId, NodeId),
+    Var,
+    Unary(Unary, Expr<NodeId>),
+    Binary(Binary, Expr<NodeId>, Expr<NodeId>),
 }
 
 /// A buffer storing values for the nodes in the computation graph respresented by `Operations`.
@@ -88,7 +85,7 @@ pub struct Values(Vec<f64>);
 impl Values {
     /// Creates and returns a buffer of the specified size, with every element
     /// initialized to NaN.
-    /// 
+    ///
     /// This buffer is intended to be re-used when doing multiple forward and
     /// backward passes over the same computation graph.
     pub fn new(len: usize) -> Self {
@@ -113,7 +110,7 @@ pub struct Gradients(Vec<f64>);
 impl Gradients {
     /// Creates and returns a buffer of the specified size, with every element
     /// initialized to NaN.
-    /// 
+    ///
     /// This buffer is intended to be re-used when doing multiple forward and
     /// backward passes over the same computation graph.
     pub fn new(len: usize) -> Self {
@@ -135,26 +132,14 @@ impl_index_node_id!(Gradients, f64);
 pub struct Operations(Vec<Op>);
 
 impl Operations {
-    pub fn push(&mut self, operation: Op) -> NodeId {
+    pub(crate) fn push(&mut self, operation: Op) -> NodeId {
         let id = NodeId(self.0.len());
         self.0.push(operation);
         id
     }
 
-    pub fn lit(&mut self) -> NodeId {
-        self.push(Op::Nullary(Nullary::Literal))
-    }
-
-    pub fn add(&mut self, a: NodeId, b: NodeId) -> NodeId {
-        self.push(Op::Binary(Binary::Add, a, b))
-    }
-
-    pub fn mul(&mut self, a: NodeId, b: NodeId) -> NodeId {
-        self.push(Op::Binary(Binary::Mul, a, b))
-    }
-
-    pub fn pow(&mut self, a: NodeId, b: NodeId) -> NodeId {
-        self.push(Op::Binary(Binary::Pow, a, b))
+    pub fn insert<T: Insertable>(&mut self, insertable: T) -> T::Output {
+        insertable.insert(self)
     }
 
     pub fn len(&self) -> usize {
@@ -169,9 +154,9 @@ impl Operations {
         assert_eq!(self.0.len(), values.0.len());
 
         for (index, &op) in self.0.iter().enumerate() {
-            let id = NodeId(index);
+            let id = Expr(NodeId(index));
             match op {
-                Op::Nullary(_) => {
+                Op::Var => {
                     // Nothing to do.
                 }
                 Op::Unary(unary, a) => values[id] = unary.forward(values[a]),
@@ -180,7 +165,7 @@ impl Operations {
         }
     }
 
-    pub fn backward(&self, values: &Values, gradients: &mut Gradients, target: NodeId) {
+    pub fn backward(&self, values: &Values, gradients: &mut Gradients, target: Expr<NodeId>) {
         assert_eq!(self.len(), values.len());
         assert_eq!(self.len(), gradients.len());
 
@@ -190,11 +175,9 @@ impl Operations {
         while !todo.is_empty() {
             for id in todo.iter().copied() {
                 match self[target] {
-                    Op::Nullary(nullary) => match nullary {
-                        Nullary::Literal => {
-                            // Nothing to do.
-                        }
-                    },
+                    Op::Var => {
+                        // Nothing to do.
+                    }
                     Op::Unary(unary, a) => {
                         let grad = gradients[id];
                         gradients[a] = unary.backward(values[a]) * grad;
@@ -222,12 +205,19 @@ impl_index_node_id!(Operations, Op);
 pub mod tests {
     use super::*;
 
-    fn test_binary(op: Binary, vc: f64, dcda: f64, dcdb: f64) {
+    fn test_binary<
+        T: Insertable<Output = Expr<NodeId>>,
+        F: FnOnce(Expr<NodeId>, Expr<NodeId>) -> Expr<T>,
+    >(
+        f: F,
+        vc: f64,
+        dcda: f64,
+        dcdb: f64,
+    ) {
         // Construct computation graph.
         let mut operations = Operations::default();
-        let a = operations.lit();
-        let b = operations.lit();
-        let c = operations.push(Op::Binary(op, a, b));
+        let [a, b] = operations.insert([crate::syntax::Var; _]);
+        let c = operations.insert(f(a, b));
 
         // Initialize buffers.
         let mut values = Values::new(operations.len());
@@ -247,16 +237,22 @@ pub mod tests {
 
     #[test]
     fn test_add() {
-        test_binary(Binary::Add, 7.0, 1.0, 1.0);
+        test_binary(|a, b| a + b, 7.0, 1.0, 1.0);
     }
 
     #[test]
     fn test_mul() {
-        test_binary(Binary::Mul, 12.0, 4.0, 3.0);
+        test_binary(|a, b| a * b, 12.0, 4.0, 3.0);
     }
 
     #[test]
     fn test_pow() {
-        test_binary(Binary::Pow, 81.0, 108.0, 88.9875953821169);
+        test_binary(|a, b| a.pow(b), 81.0, 108.0, 88.9875953821169);
     }
+}
+
+pub trait Insertable {
+    type Output;
+
+    fn insert(self, ops: &mut Operations) -> Self::Output;
 }
