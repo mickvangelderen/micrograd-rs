@@ -49,6 +49,13 @@ pub enum Nullary {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Unary {
     Neg,
+    Recip,
+    Pow2,
+    Ln,
+    Ln1P,
+    Exp,
+    Exp2,
+    ExpM1,
 }
 
 impl Unary {
@@ -56,15 +63,29 @@ impl Unary {
     pub fn forward(self, a: f64) -> f64 {
         match self {
             Unary::Neg => -a,
+            Unary::Recip => a.recip(),
+            Unary::Pow2 => a.powi(2),
+            Unary::Ln => a.ln(),
+            Unary::Ln1P => a.ln_1p(),
+            Unary::Exp => a.exp(),
+            Unary::Exp2 => a.exp2(),
+            Unary::ExpM1 => a.exp_m1(),
         }
     }
 
     /// Given the unary function b(a) represented by this operation, returns the
     /// partial derivative db/da.
     #[inline]
-    pub fn backward(self, _a: f64) -> f64 {
+    pub fn backward(self, a: f64, b: f64) -> f64 {
         match self {
             Unary::Neg => -1.0,
+            Unary::Recip => -(b * b),
+            Unary::Pow2 => 2.0 * a,
+            Unary::Ln => a.recip(),
+            Unary::Ln1P => (1.0 + a).recip(),
+            Unary::Exp => b,
+            Unary::Exp2 => f64::consts::LN_2 * b,
+            Unary::ExpM1 => a.exp(), // or b + 1
         }
     }
 }
@@ -72,7 +93,9 @@ impl Unary {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Binary {
     Add,
+    Sub,
     Mul,
+    Div,
     Pow,
 }
 
@@ -81,7 +104,9 @@ impl Binary {
     pub fn forward(self, a: f64, b: f64) -> f64 {
         match self {
             Binary::Add => a + b,
+            Binary::Sub => a - b,
             Binary::Mul => a * b,
+            Binary::Div => a / b,
             Binary::Pow => a.powf(b),
         }
     }
@@ -89,11 +114,20 @@ impl Binary {
     /// Given the binary function c(a, b) represented by this operation, returns
     /// the partial derivatives dc/da and dc/db.
     #[inline]
-    pub fn backward(self, a: f64, b: f64) -> (f64, f64) {
+    pub fn backward(self, a: f64, b: f64, c: f64) -> (f64, f64) {
         match self {
             Binary::Add => (1.0, 1.0),
+            Binary::Sub => (1.0, -1.0),
             Binary::Mul => (b, a),
-            Binary::Pow => (b * a.powf(b - 1.0), a.ln() * a.powf(b)),
+            Binary::Div => {
+                let b_inv = b.recip();
+                (b_inv, -b_inv * c)
+            }
+            Binary::Pow => {
+                // Not using b*a.powf(b)/a because it would return NaN for a ==
+                // 0.0 intead of the correct 0.0.
+                (b*a.powf(b - 1.0), a.ln() * c)
+            },
         }
     }
 }
@@ -134,7 +168,10 @@ impl Insertable for Id {
 
     #[inline]
     fn insert_into(self, ops: &mut Operations) -> NodeId {
-        assert!(self.0 < ops.len(), "Are you using a node from another graph?");
+        assert!(
+            self.0 < ops.len(),
+            "Are you using a node from another graph?"
+        );
         Expr(self)
     }
 }
@@ -335,6 +372,7 @@ impl Operations {
 
         for id in (0..=target.index()).map(NodeId::new).rev() {
             let grad = gradients[id];
+            let primal = values[id];
 
             // If a node's gradient is zero, it can not change it's children and
             // so we can skip processing it.
@@ -347,10 +385,10 @@ impl Operations {
                     // Nothing to do.
                 }
                 Op::Unary(unary, a) => {
-                    gradients[a] += unary.backward(values[a]) * grad;
+                    gradients[a] += unary.backward(values[a], primal) * grad;
                 }
                 Op::Binary(binary, (a, b)) => {
-                    let (da, db) = binary.backward(values[a], values[b]);
+                    let (da, db) = binary.backward(values[a], values[b], primal);
                     gradients[a] += da * grad;
                     gradients[b] += db * grad;
                 }
@@ -423,19 +461,15 @@ pub mod tests {
     fn batching() {
         // Construct computation graph.
         let mut ops = Operations::default();
-        let [a, x, b, y, const_minus_one, const_two] = ops.vars();
+        let [a, x, b, y] = ops.vars();
         let y_pred = ops.insert(a * x + b);
-        let loss = ops.insert((y + const_minus_one * y_pred).pow(const_two));
+        let loss = ops.insert((y - y_pred).pow_2());
         let ops = ops;
 
         // Create buffers.
         let mut values = Values::new(ops.len());
         let mut acc = Gradients::new(ops.len());
         let mut gradients = Gradients::new(ops.len());
-
-        // Initialize constants.
-        values[const_minus_one] = -1.0;
-        values[const_two] = 2.0;
 
         // "Randomly" initialize parameters.
         values[a] = 0.5;
@@ -472,8 +506,16 @@ pub mod tests {
             }
         }
 
-        assert!((values[a] - 2.0).abs() < 0.2, "expected a to be close to 2.0 but got {}", values[a]);
-        assert!((values[b] - 3.0).abs() < 0.2, "expected b to be close to 3.0 but got {}", values[b]);
+        assert!(
+            (values[a] - 2.0).abs() < 0.2,
+            "expected a to be close to 2.0 but got {}",
+            values[a]
+        );
+        assert!(
+            (values[b] - 3.0).abs() < 0.2,
+            "expected b to be close to 3.0 but got {}",
+            values[b]
+        );
     }
 
     #[test]
