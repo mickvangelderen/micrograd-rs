@@ -1,88 +1,115 @@
-use crate::engine::{Binary, NodeId, Op, Operations};
+use crate::engine::{self, Expr, Insertable, NodeId, Op, Operations};
 
-impl Operations {
-    pub fn expr<T: Resolve>(&mut self, expr: T) -> NodeId {
-        expr.resolve(self)
+pub struct Unary<O, A>(O, A);
+
+pub mod unary {
+    use crate::engine;
+
+    pub trait Dynamic {
+        const DYNAMIC: engine::Unary;
+    }
+
+    pub struct Neg;
+
+    impl Dynamic for Neg {
+        const DYNAMIC: engine::Unary = engine::Unary::Neg;
     }
 }
 
-pub trait Resolve {
-    fn resolve(self, ops: &mut Operations) -> NodeId;
+pub type Neg<A> = Unary<unary::Neg, A>;
+
+trait UnaryStatic {
+    const DYNAMIC: engine::Unary;
 }
 
-impl Resolve for NodeId {
-    fn resolve(self, _: &mut Operations) -> NodeId {
-        self
+impl UnaryStatic for unary::Neg {
+    const DYNAMIC: engine::Unary = engine::Unary::Neg;
+}
+
+impl<O: UnaryStatic, A: Insertable<Output = NodeId>> Insertable for Unary<O, A> {
+    type Output = NodeId;
+
+    fn insert_into(self, ops: &mut Operations) -> Self::Output {
+        Op::Unary(O::DYNAMIC, self.1.insert_into(ops)).insert_into(ops)
     }
 }
 
-pub struct Add<A, B>(A, B);
+pub struct Binary<O, A>(O, A);
 
-pub struct Mul<A, B>(A, B);
-
-pub struct Pow<A, B>(A, B);
-
-impl<L: Resolve, R: Resolve> Resolve for Add<L, R> {
-    fn resolve(self, ops: &mut Operations) -> NodeId {
-        let a = self.0.resolve(ops);
-        let b = self.1.resolve(ops);
-        ops.push(Op::Binary(Binary::Add, a, b))
-    }
+pub mod binary {
+    pub struct Add;
+    pub struct Mul;
+    pub struct Pow;
 }
 
-impl<L: Resolve, R: Resolve> Resolve for Mul<L, R> {
-    fn resolve(self, ops: &mut Operations) -> NodeId {
-        let a = self.0.resolve(ops);
-        let b = self.1.resolve(ops);
-        ops.push(Op::Binary(Binary::Add, a, b))
-    }
+pub type Add<A, B> = Binary<binary::Add, (A, B)>;
+pub type Mul<A, B> = Binary<binary::Mul, (A, B)>;
+pub type Pow<A, B> = Binary<binary::Pow, (A, B)>;
+
+trait BinaryStatic {
+    const DYNAMIC: engine::Binary;
 }
 
-impl<L: Resolve, R: Resolve> Resolve for Pow<L, R> {
-    fn resolve(self, ops: &mut Operations) -> NodeId {
-        let a = self.0.resolve(ops);
-        let b = self.1.resolve(ops);
-        ops.push(Op::Binary(Binary::Pow, a, b))
-    }
+impl BinaryStatic for binary::Add {
+    const DYNAMIC: engine::Binary = engine::Binary::Add;
 }
 
-pub struct Expr<T>(T);
+impl BinaryStatic for binary::Mul {
+    const DYNAMIC: engine::Binary = engine::Binary::Mul;
+}
+
+impl BinaryStatic for binary::Pow {
+    const DYNAMIC: engine::Binary = engine::Binary::Pow;
+}
+
+impl<O: BinaryStatic, A: Insertable<Output = (NodeId, NodeId)>> Insertable for Binary<O, A> {
+    type Output = NodeId;
+
+    fn insert_into(self, ops: &mut Operations) -> Self::Output {
+        Op::Binary(O::DYNAMIC, self.1.insert_into(ops)).insert_into(ops)
+    }
+}
 
 impl<A> Expr<A> {
-    pub fn add<B>(self, rhs: Expr<B>) -> Expr<Add<Self, Expr<B>>> {
-        Expr(Add(self, rhs))
+    pub fn pow<B>(self, rhs: Expr<B>) -> Expr<Pow<A, B>> {
+        Expr(Binary(binary::Pow, (self.0, rhs.0)))
     }
+}
 
-    pub fn mul<B>(self, rhs: Expr<B>) -> Expr<Mul<Self, Expr<B>>> {
-        Expr(Mul(self, rhs))
-    }
+impl<A> std::ops::Neg for Expr<A> {
+    type Output = Expr<Neg<A>>;
 
-    pub fn pow<B>(self, rhs: Expr<B>) -> Expr<Pow<Self, Expr<B>>> {
-        Expr(Pow(self, rhs))
+    fn neg(self) -> Self::Output {
+        Expr(Unary(unary::Neg, self.0))
     }
 }
 
 impl<A, B> std::ops::Add<Expr<B>> for Expr<A> {
-    type Output = Expr<Add<Self, Expr<B>>>;
+    type Output = Expr<Add<A, B>>;
 
     fn add(self, rhs: Expr<B>) -> Self::Output {
-        self.add(rhs)
+        Expr(Binary(binary::Add, (self.0, rhs.0)))
     }
 }
 
 impl<A, B> std::ops::Mul<Expr<B>> for Expr<A> {
-    type Output = Expr<Mul<Self, Expr<B>>>;
+    type Output = Expr<Mul<A, B>>;
 
     fn mul(self, rhs: Expr<B>) -> Self::Output {
-        self.mul(rhs)
+        Expr(Binary(binary::Mul, (self.0, rhs.0)))
     }
 }
 
-impl<T> Resolve for Expr<T>
-where
-    T: Resolve,
-{
-    fn resolve(self, ops: &mut Operations) -> NodeId {
-        self.0.resolve(ops)
+#[cfg(test)]
+pub mod tests {
+    use crate::engine::Operations;
+
+    #[allow(unused)]
+    fn should_compile() {
+        let ops = &mut Operations::default();
+        let [a, b] = ops.vars();
+        let _c = ops.insert(a + b);
+        let _d = ops.insert(a * b);
+        let _e = ops.insert(a.pow(b));
     }
 }

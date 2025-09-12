@@ -1,37 +1,19 @@
 use crate::engine::{NodeId, Operations};
-use crate::syntax::Expr;
 
-fn add_n<I: IntoIterator<Item = NodeId>>(args: I, ops: &mut Operations) -> Option<NodeId> {
-    let mut args = args.into_iter();
-    let mut acc = args.next()?;
-    for arg in args {
-        acc = ops.add(acc, arg)
-    }
-    Some(acc)
-}
-
-fn lit_n(ops: &mut Operations, len: usize) -> Vec<NodeId> {
-    (0..len).map(|_| ops.lit()).collect()
-}
-
-fn fully_connected_layer(
+pub fn fully_connected_layer(
     ops: &mut Operations,
     inputs: &[NodeId],
     output_len: usize,
 ) -> Vec<(Vec<NodeId>, NodeId, NodeId)> {
     (0..output_len)
         .map(|_| {
-            let weights = lit_n(ops, inputs.len());
-            let bias = ops.lit();
-            let output =
-                inputs
-                    .iter()
-                    .copied()
-                    .zip(weights.iter().copied())
-                    .fold(bias, |sum, (a, b)| {
-                        ops.expr(Expr(sum) + Expr(a) * Expr(b))
-                        // ops.expr(sum + a * b) // TODO: Make this work.
-                    });
+            let weights: Vec<_> = ops.vars_vec(inputs.len());
+            let bias = ops.var();
+            let output = inputs
+                .iter()
+                .copied()
+                .zip(weights.iter().copied())
+                .fold(bias, |sum, (a, b)| ops.insert(sum + a * b));
             (weights, bias, output)
         })
         .collect()
