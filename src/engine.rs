@@ -365,7 +365,7 @@ impl_index_node_id!(Operations, Op);
 pub mod tests {
     use super::*;
 
-    fn test_binary(op: Binary, vc: f64, dcda: f64, dcdb: f64) {
+    fn test_binary_op(op: Binary, vc: f64, dcda: f64, dcdb: f64) {
         // Construct computation graph.
         let mut ops = Operations::default();
         let [a, b] = ops.vars();
@@ -386,22 +386,22 @@ pub mod tests {
     }
 
     #[test]
-    fn test_add() {
-        test_binary(Binary::Add, 7.0, 1.0, 1.0);
+    fn add() {
+        test_binary_op(Binary::Add, 7.0, 1.0, 1.0);
     }
 
     #[test]
-    fn test_mul() {
-        test_binary(Binary::Mul, 12.0, 4.0, 3.0);
+    fn mul() {
+        test_binary_op(Binary::Mul, 12.0, 4.0, 3.0);
     }
 
     #[test]
-    fn test_pow() {
-        test_binary(Binary::Pow, 81.0, 108.0, 88.9875953821169);
+    fn pow() {
+        test_binary_op(Binary::Pow, 81.0, 108.0, 88.9875953821169);
     }
 
     #[test]
-    fn test_reused_node() {
+    fn node_reuse() {
         // Construct computation graph.
         let mut ops = Operations::default();
         let a = ops.var();
@@ -474,5 +474,15 @@ pub mod tests {
 
         assert!((values[a] - 2.0).abs() < 0.2, "expected a to be close to 2.0 but got {}", values[a]);
         assert!((values[b] - 3.0).abs() < 0.2, "expected b to be close to 3.0 but got {}", values[b]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn insert_node_from_future() {
+        let mut ops1 = Operations::default();
+        let [a1] = ops1.vars();
+
+        let mut ops2 = Operations::default();
+        let _a2 = ops2.insert(a1); // should panic becasue NodeId(0) doesn't exist in ops2.
     }
 }
