@@ -68,7 +68,19 @@ fn export_to_dot<W: Write>(ops: &Operations, values: Option<&Values>, labels: &[
     Ok(())
 }
 
-fn main() {
+fn nn() {
+    // Create a sample computation graph
+    let mut ops = Operations::default();
+    let [x0, x1] = ops.vars();
+    let l1 = micrograd_rs::nn::fully_connected_layer(&mut ops, &[x0, x1], 2);
+    let _l2 = micrograd_rs::nn::fully_connected_layer(&mut ops, &l1[..], 1);
+
+    let labels: Vec<_> = ops.nodes().map(|_| None).collect();
+
+    export_to_dot(&ops, None, &labels, &mut std::io::stdout()).unwrap();
+}
+
+fn sample() {
     // Create a sample computation graph
     let mut ops = Operations::default();
     let [a, x, b, y] = ops.vars();
@@ -94,4 +106,8 @@ fn main() {
     
     let mut writer = std::io::stdout();
     export_to_dot(&ops, Some(&values), &labels, &mut writer).expect("Failed to export to DOT");
+}
+
+fn main() {
+    nn();
 }
