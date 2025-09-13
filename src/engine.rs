@@ -386,7 +386,9 @@ impl Operations {
                     // Nothing to do.
                 }
                 Op::Unary(unary, input) => values[output] = unary.forward(values[input]),
-                Op::Binary(binary, input) => values[output] = binary.forward(values[input.0], values[input.1]),
+                Op::Binary(binary, input) => {
+                    values[output] = binary.forward(values[input.0], values[input.1])
+                }
             }
         }
     }
@@ -406,7 +408,7 @@ impl Operations {
 
         for o in self.nodes().rev() {
             let gradients_o = gradients[o];
-            
+
             // If a node's gradient is zero, it can not change it's children and
             // so we can skip processing it.
             if gradients_o == 0.0 {
@@ -421,7 +423,8 @@ impl Operations {
                     gradients[i0] += unary.backward(values[i0], values[o]) * gradients_o;
                 }
                 Op::Binary(binary, (i0, i1)) => {
-                    let (gradients_i0, gradients_i1) = binary.backward(values[i0], values[i1], values[o]);
+                    let (gradients_i0, gradients_i1) =
+                        binary.backward(values[i0], values[i1], values[o]);
                     gradients[i0] += gradients_i0 * gradients_o;
                     gradients[i1] += gradients_i1 * gradients_o;
                 }
