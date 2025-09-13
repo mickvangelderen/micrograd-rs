@@ -11,15 +11,15 @@ pub struct Expr<T>(pub(crate) T);
 
 pub type NodeId = Expr<Id>;
 
-impl NodeId {
-    #[inline]
-    pub(crate) fn new(index: usize) -> Self {
-        Expr(Id(index))
+impl From<usize> for NodeId {
+    fn from(value: usize) -> Self {
+        Expr(Id(value))
     }
+}
 
-    #[inline]
-    pub(crate) fn index(self) -> usize {
-        self.0.0
+impl From<NodeId> for usize {
+    fn from(value: NodeId) -> Self {
+        value.0.0
     }
 }
 
@@ -29,13 +29,74 @@ macro_rules! impl_index_node_id {
             type Output = $O;
             #[inline]
             fn index(&self, index: NodeId) -> &Self::Output {
-                &self.0[index.index()]
+                &self.0[usize::from(index)]
             }
         }
         impl ::std::ops::IndexMut<NodeId> for $T {
             #[inline]
             fn index_mut(&mut self, index: NodeId) -> &mut Self::Output {
-                &mut self.0[index.index()]
+                &mut self.0[usize::from(index)]
+            }
+        }
+    };
+}
+
+macro_rules! impl_buffer {
+    ($T:ty, $I: ty) => {
+        impl IntoIterator for $T {
+            type Item = $I;
+            type IntoIter = <Vec<$I> as IntoIterator>::IntoIter;
+
+            #[inline]
+            fn into_iter(self) -> Self::IntoIter {
+                self.0.into_iter()
+            }
+        }
+
+        impl<'a> IntoIterator for &'a $T {
+            type Item = &'a $I;
+            type IntoIter = std::slice::Iter<'a, $I>;
+
+            #[inline]
+            fn into_iter(self) -> Self::IntoIter {
+                self.0.iter()
+            }
+        }
+
+        impl<'a> IntoIterator for &'a mut $T {
+            type Item = &'a mut $I;
+            type IntoIter = std::slice::IterMut<'a, $I>;
+
+            #[inline]
+            fn into_iter(self) -> Self::IntoIter {
+                self.0.iter_mut()
+            }
+        }
+
+        impl $T {
+            #[inline]
+            pub fn iter(&self) -> <&Self as IntoIterator>::IntoIter {
+                IntoIterator::into_iter(self)
+            }
+
+            #[inline]
+            pub fn iter_mut(&mut self) -> <&mut Self as IntoIterator>::IntoIter {
+                IntoIterator::into_iter(self)
+            }
+
+            #[inline]
+            pub fn len(&self) -> usize {
+                self.0.len()
+            }
+
+            #[inline]
+            pub fn is_empty(&self) -> bool {
+                self.0.is_empty()
+            }
+
+            #[inline]
+            pub fn nodes(&self) -> impl ExactSizeIterator<Item = NodeId> + DoubleEndedIterator {
+                (0..self.len()).map(NodeId::from)
             }
         }
     };
@@ -126,8 +187,8 @@ impl Binary {
             Binary::Pow => {
                 // Not using b*a.powf(b)/a because it would return NaN for a ==
                 // 0.0 intead of the correct 0.0.
-                (b*a.powf(b - 1.0), a.ln() * c)
-            },
+                (b * a.powf(b - 1.0), a.ln() * c)
+            }
         }
     }
 }
@@ -199,7 +260,7 @@ impl Insertable for Op {
 
     #[inline]
     fn insert_into(self, ops: &mut Operations) -> NodeId {
-        let id = NodeId::new(ops.0.len());
+        let id = NodeId::from(ops.0.len());
         ops.0.push(self);
         id
     }
@@ -221,22 +282,14 @@ impl Values {
     }
 
     #[inline]
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    #[inline]
     pub fn resize(&mut self, new_len: usize, value: f64) {
         self.0.resize(new_len, value);
     }
 }
 
 impl_index_node_id!(Values, f64);
+
+impl_buffer!(Values, f64);
 
 /// A buffer storing gradients for the nodes in the computation graph respresented by `Operations`.
 #[derive(Debug, Default)]
@@ -251,16 +304,6 @@ impl Gradients {
     #[inline]
     pub fn new(len: usize) -> Self {
         Self(std::iter::repeat_n(0.0, len).collect())
-    }
-
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
     }
 
     #[inline]
@@ -285,6 +328,8 @@ impl Gradients {
 }
 
 impl_index_node_id!(Gradients, f64);
+
+impl_buffer!(Gradients, f64);
 
 #[derive(Debug, Default)]
 pub struct Operations(Vec<Op>);
@@ -328,16 +373,6 @@ impl Operations {
     }
 
     #[inline]
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    #[inline]
     pub fn clear(&mut self) {
         self.0.clear();
     }
@@ -345,14 +380,13 @@ impl Operations {
     pub fn forward(&self, values: &mut Values) {
         debug_assert_eq!(self.0.len(), values.0.len());
 
-        for (index, &op) in self.0.iter().enumerate() {
-            let id = NodeId::new(index);
-            match op {
+        for output in self.nodes() {
+            match self[output] {
                 Op::Nullary(Nullary::Var) => {
                     // Nothing to do.
                 }
-                Op::Unary(unary, a) => values[id] = unary.forward(values[a]),
-                Op::Binary(binary, (a, b)) => values[id] = binary.forward(values[a], values[b]),
+                Op::Unary(unary, input) => values[output] = unary.forward(values[input]),
+                Op::Binary(binary, input) => values[output] = binary.forward(values[input.0], values[input.1]),
             }
         }
     }
@@ -370,27 +404,26 @@ impl Operations {
         gradients.fill(0.0);
         gradients[target] = gradient;
 
-        for id in (0..=target.index()).map(NodeId::new).rev() {
-            let grad = gradients[id];
-            let primal = values[id];
-
+        for o in self.nodes().rev() {
+            let gradients_o = gradients[o];
+            
             // If a node's gradient is zero, it can not change it's children and
             // so we can skip processing it.
-            if grad == 0.0 {
+            if gradients_o == 0.0 {
                 continue;
             }
 
-            match self[id] {
+            match self[o] {
                 Op::Nullary(Nullary::Var) => {
                     // Nothing to do.
                 }
-                Op::Unary(unary, a) => {
-                    gradients[a] += unary.backward(values[a], primal) * grad;
+                Op::Unary(unary, i0) => {
+                    gradients[i0] += unary.backward(values[i0], values[o]) * gradients_o;
                 }
-                Op::Binary(binary, (a, b)) => {
-                    let (da, db) = binary.backward(values[a], values[b], primal);
-                    gradients[a] += da * grad;
-                    gradients[b] += db * grad;
+                Op::Binary(binary, (i0, i1)) => {
+                    let (gradients_i0, gradients_i1) = binary.backward(values[i0], values[i1], values[o]);
+                    gradients[i0] += gradients_i0 * gradients_o;
+                    gradients[i1] += gradients_i1 * gradients_o;
                 }
             }
         }
@@ -398,6 +431,8 @@ impl Operations {
 }
 
 impl_index_node_id!(Operations, Op);
+
+impl_buffer!(Operations, Op);
 
 #[cfg(test)]
 pub mod tests {
