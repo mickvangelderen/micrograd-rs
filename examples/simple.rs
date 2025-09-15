@@ -1,4 +1,4 @@
-use micrograd_rs::engine::{Operations, Values};
+use micrograd_rs::engine::{NodeId, Operations, Values};
 use micrograd_rs::graphviz::export_to_dot;
 
 fn main() {
@@ -17,23 +17,32 @@ fn main() {
     values[y] = -2.0;
     ops.forward(&mut values);
 
-    let labels = |node| {
-        let name = match node {
-            node if node == a => Some("a"),
-            node if node == x => Some("x"),
-            node if node == b => Some("b"),
-            node if node == y => Some("y"),
-            node if node == y_pred => Some("y_pred"),
-            node if node == loss => Some("loss"),
-            _ => None,
-        };
-        let value = values[node];
-        match name {
-            Some(name) => format!("{name} = {value}"),
-            None => format!("{value}"),
-        }
-    };
+    let labels = (0..ops.len())
+        .map(NodeId::from)
+        .map(|node| {
+            let name = match node {
+                node if node == a => Some("a"),
+                node if node == x => Some("x"),
+                node if node == b => Some("b"),
+                node if node == y => Some("y"),
+                node if node == y_pred => Some("y_pred"),
+                node if node == loss => Some("loss"),
+                _ => None,
+            };
+            let value = values[node];
+            match name {
+                Some(name) => format!("{name} = {value}"),
+                None => format!("{value}"),
+            }
+        })
+        .collect::<Vec<_>>();
 
     let mut writer = std::io::stdout();
-    export_to_dot(&ops, labels, |_node| None::<i32>, &mut writer).expect("Failed to export to DOT");
+    export_to_dot(
+        &ops,
+        |node| labels[usize::from(node)].as_str(),
+        |_node| None::<usize>,
+        &mut writer,
+    )
+    .expect("Failed to export to DOT");
 }

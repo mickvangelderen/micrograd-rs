@@ -2,42 +2,55 @@ use crate::engine::{Binary, NodeId, Op, Operations, Unary};
 use std::io::Write;
 
 pub fn export_to_dot<
+    'l,
     W: Write,
-    L: FnMut(NodeId) -> LO,
-    LO: std::fmt::Display,
-    R: FnMut(NodeId) -> Option<RO>,
-    RO: std::fmt::Display,
+    L: Fn(NodeId) -> &'l str,
+    R: Fn(NodeId) -> Option<usize>,
 >(
     ops: &Operations,
-    mut labels: L,
-    mut ranks: R,
+    labels: L,
+    ranks: R,
     writer: &mut W,
 ) -> std::io::Result<()> {
     writeln!(writer, "digraph ComputationGraph {{")?;
     writeln!(writer, "    rankdir=LR;")?;
     writeln!(writer, "    node [shape=record, style=\"rounded,filled\"];")?;
 
+    let should_emit_value_node = |node: NodeId| -> bool {
+        match ops[node] {
+            Op::Nullary(crate::engine::Nullary::Var) => true, // Always emit variables
+            _ => !labels(node).is_empty(), // Only emit value nodes if they have a label
+        }
+    };
+
+    // Collect rank groups from emitted nodes
+    let rank_groups: std::collections::HashMap<usize, Vec<NodeId>> = ops
+        .nodes()
+        .fold(Default::default(), |mut map, node| {
+            if let Some(rank) = ranks(node) {
+                map.entry(rank).or_default().push(node);
+            }
+            map
+        });
+
+    // Emit value nodes
     for node in ops.nodes() {
-        let index = usize::from(node);
-        let label = labels(node);
+        if should_emit_value_node(node) {
+            let index = usize::from(node);
+            let label = labels(node);
+            let fillcolor = match ops[node] {
+                Op::Nullary(crate::engine::Nullary::Var) => "lightblue",
+                _ => "lightyellow",
+            };
 
-        let fillcolor = match ops[node] {
-            Op::Nullary(crate::engine::Nullary::Var) => "lightblue",
-            _ => "lightyellow",
-        };
-
-        let rank_attr = if let Some(rank) = ranks(node) {
-            format!(", rank={rank}")
-        } else {
-            String::new()
-        };
-
-        writeln!(
-            writer,
-            "    n{index} [label=\"{label}\", shape=box, fillcolor={fillcolor}{rank_attr}];"
-        )?;
+            writeln!(
+                writer,
+                "    n{index} [label=\"{label}\", shape=box, fillcolor={fillcolor}];",
+            )?;
+        }
     }
 
+    // Emit operation nodes
     for node in ops.nodes() {
         let index = usize::from(node);
 
@@ -45,28 +58,75 @@ pub fn export_to_dot<
             Op::Nullary(crate::engine::Nullary::Var) => {
                 // Nothing to do.
             }
-            Op::Unary(unary_op, input) => {
+            Op::Unary(unary_op, _) => {
                 let label = unary_op_to_str(unary_op);
                 writeln!(
                     writer,
-                    "    op{index} [label=\"{label}\", shape=diamond, regular=true, fillcolor=lightgreen];"
+                    "    op{index} [label=\"{label}\", shape=diamond, regular=true, fillcolor=lightgreen, width=0.5, height=0.5, fixedsize=true];"
                 )?;
-
-                // Connect input -> operator -> output
-                writeln!(writer, "    n{} -> op{index};", usize::from(input))?;
-                writeln!(writer, "    op{index} -> n{index};")?;
             }
-            Op::Binary(binary_op, (a, b)) => {
+            Op::Binary(binary_op, _) => {
                 let label = binary_op_to_str(binary_op);
                 writeln!(
                     writer,
-                    "    op{index} [label=\"{label}\", shape=diamond, regular=true, fillcolor=lightgreen];"
+                    "    op{index} [label=\"{label}\", shape=diamond, regular=true, fillcolor=lightgreen, width=0.5, height=0.5, fixedsize=true];"
+                )?;
+            }
+        }
+    }
+
+    // Emit rank constraints
+    for (_, nodes) in rank_groups {
+        if nodes.len() > 1 {
+            write!(writer, "    {{ rank=same; ")?;
+            for node in nodes {
+                write!(writer, "n{}; ", usize::from(node))?;
+            }
+            writeln!(writer, "}}")?;
+        }
+    }
+
+    // Emit connections
+    for node in ops.nodes() {
+        let index = usize::from(node);
+
+        match ops[node] {
+            Op::Nullary(crate::engine::Nullary::Var) => {
+                // Nothing to do.
+            }
+            Op::Unary(_, input) => {
+                let input_source = if should_emit_value_node(input) {
+                    "n"
+                } else {
+                    "op"
+                };
+                writeln!(
+                    writer,
+                    "    {input_source}{} -> op{index};",
+                    usize::from(input)
                 )?;
 
-                // Connect inputs -> operator -> output
-                writeln!(writer, "    n{} -> op{index};", usize::from(a))?;
-                writeln!(writer, "    n{} -> op{index};", usize::from(b))?;
-                writeln!(writer, "    op{index} -> n{index};")?;
+                if should_emit_value_node(node) {
+                    writeln!(writer, "    op{index} -> n{index};")?;
+                }
+            }
+            Op::Binary(_, (a, b)) => {
+                let a_source = if should_emit_value_node(a) {
+                    "n"
+                } else {
+                    "op"
+                };
+                let b_source = if should_emit_value_node(b) {
+                    "n"
+                } else {
+                    "op"
+                };
+                writeln!(writer, "    {a_source}{} -> op{index};", usize::from(a))?;
+                writeln!(writer, "    {b_source}{} -> op{index};", usize::from(b))?;
+
+                if should_emit_value_node(node) {
+                    writeln!(writer, "    op{index} -> n{index};")?;
+                }
             }
         }
     }
