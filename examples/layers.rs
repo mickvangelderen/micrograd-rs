@@ -20,6 +20,7 @@ fn main() {
     export_to_dot(
         &ops,
         |node| &labels[usize::from(node)],
+        |_node| None::<i32>,
         &mut std::io::stdout(),
     )
     .unwrap();

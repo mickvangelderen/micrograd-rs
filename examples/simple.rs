@@ -35,5 +35,5 @@ fn main() {
     };
 
     let mut writer = std::io::stdout();
-    export_to_dot(&ops, labels, &mut writer).expect("Failed to export to DOT");
+    export_to_dot(&ops, labels, |_node| None::<i32>, &mut writer).expect("Failed to export to DOT");
 }

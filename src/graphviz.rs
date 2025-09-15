@@ -1,9 +1,16 @@
 use crate::engine::{Binary, NodeId, Op, Operations, Unary};
 use std::io::Write;
 
-pub fn export_to_dot<W: Write, L: FnMut(NodeId) -> LO, LO: std::fmt::Display>(
+pub fn export_to_dot<
+    W: Write,
+    L: FnMut(NodeId) -> LO,
+    LO: std::fmt::Display,
+    R: FnMut(NodeId) -> Option<RO>,
+    RO: std::fmt::Display,
+>(
     ops: &Operations,
     mut labels: L,
+    mut ranks: R,
     writer: &mut W,
 ) -> std::io::Result<()> {
     writeln!(writer, "digraph ComputationGraph {{")?;
@@ -19,9 +26,15 @@ pub fn export_to_dot<W: Write, L: FnMut(NodeId) -> LO, LO: std::fmt::Display>(
             _ => "lightyellow",
         };
 
+        let rank_attr = if let Some(rank) = ranks(node) {
+            format!(", rank={rank}")
+        } else {
+            String::new()
+        };
+
         writeln!(
             writer,
-            "    n{index} [label=\"{label}\", shape=box, fillcolor={fillcolor}];"
+            "    n{index} [label=\"{label}\", shape=box, fillcolor={fillcolor}{rank_attr}];"
         )?;
     }
 
