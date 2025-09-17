@@ -117,6 +117,7 @@ pub enum Unary {
     Exp,
     Exp2,
     ExpM1,
+    TanH,
 }
 
 impl Unary {
@@ -131,6 +132,7 @@ impl Unary {
             Unary::Exp => a.exp(),
             Unary::Exp2 => a.exp2(),
             Unary::ExpM1 => a.exp_m1(),
+            Unary::TanH => a.tanh(),
         }
     }
 
@@ -140,13 +142,14 @@ impl Unary {
     pub fn backward(self, a: f64, b: f64) -> f64 {
         match self {
             Unary::Neg => -1.0,
-            Unary::Recip => -(b * b),
+            Unary::Recip => -b.powi(2),
             Unary::Pow2 => 2.0 * a,
             Unary::Ln => a.recip(),
             Unary::Ln1P => (1.0 + a).recip(),
             Unary::Exp => b,
             Unary::Exp2 => f64::consts::LN_2 * b,
             Unary::ExpM1 => a.exp(), // or b + 1
+            Unary::TanH => 1.0 - b.powi(2),
         }
     }
 }
