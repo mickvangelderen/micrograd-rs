@@ -1,12 +1,7 @@
 use crate::engine::{Binary, NodeId, Op, Operations, Unary};
 use std::io::Write;
 
-pub fn export_to_dot<
-    'l,
-    W: Write,
-    L: Fn(NodeId) -> &'l str,
-    R: Fn(NodeId) -> Option<usize>,
->(
+pub fn export_to_dot<'l, W: Write, L: Fn(NodeId) -> &'l str, R: Fn(NodeId) -> Option<usize>>(
     ops: &Operations,
     labels: L,
     ranks: R,
@@ -24,9 +19,8 @@ pub fn export_to_dot<
     };
 
     // Collect rank groups from emitted nodes
-    let rank_groups: std::collections::HashMap<usize, Vec<NodeId>> = ops
-        .nodes()
-        .fold(Default::default(), |mut map, node| {
+    let rank_groups: std::collections::HashMap<usize, Vec<NodeId>> =
+        ops.nodes().fold(Default::default(), |mut map, node| {
             if let Some(rank) = ranks(node) {
                 map.entry(rank).or_default().push(node);
             }
@@ -111,16 +105,8 @@ pub fn export_to_dot<
                 }
             }
             Op::Binary(_, (a, b)) => {
-                let a_source = if should_emit_value_node(a) {
-                    "n"
-                } else {
-                    "op"
-                };
-                let b_source = if should_emit_value_node(b) {
-                    "n"
-                } else {
-                    "op"
-                };
+                let a_source = if should_emit_value_node(a) { "n" } else { "op" };
+                let b_source = if should_emit_value_node(b) { "n" } else { "op" };
                 writeln!(writer, "    {a_source}{} -> op{index};", usize::from(a))?;
                 writeln!(writer, "    {b_source}{} -> op{index};", usize::from(b))?;
 
