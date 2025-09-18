@@ -1,3 +1,4 @@
+pub mod deref_slice;
 pub mod engine;
 pub mod graphviz;
 pub mod iter_ext;

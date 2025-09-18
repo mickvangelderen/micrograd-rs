@@ -1,6 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use crate::deref_slice::{DerefSlice, DerefSliceMut};
+use crate::iter_ext::IteratorExt as _;
 
-pub trait Index: Into<usize> + From<usize> + Copy {
+pub trait Index: Into<usize> + From<usize> + Eq + PartialEq + Copy {
     fn indices(self) -> impl Iterator<Item = Self> {
         (0..self.into()).map(From::from)
     }
@@ -9,12 +10,12 @@ pub trait Index: Into<usize> + From<usize> + Copy {
         U::from(Into::<usize>::into(self))
     }
 }
-impl<T> Index for T where T: Into<usize> + From<usize> + Copy {}
+impl<T> Index for T where T: Into<usize> + From<usize> + Eq + PartialEq + Copy {}
 
 #[macro_export]
 macro_rules! impl_index {
     ($T:ident) => {
-        #[derive(Debug, Copy, Clone)]
+        #[derive(Debug, Copy, Clone, Eq, PartialEq)]
         pub struct $T(pub usize);
         impl From<usize> for $T {
             fn from(value: usize) -> Self {
@@ -84,58 +85,6 @@ where
     }
 }
 
-// pub trait Zero {
-//     const ZERO: Self;
-// }
-
-// pub struct Tensor<T, X> {
-//     data: Box<[T]>,
-//     len: X,
-// }
-
-// impl<T, X0, X1, X2> std::ops::Mul<&Tensor<T, (X1, X2)>> for &Tensor<T, (X0, X1)> where T: std::ops::Mul<Output = T> + std::ops::AddAssign + Zero + Copy, X0: Index, X1: Index, X2: Index {
-//     type Output = Tensor<T, (X0, X2)>;
-
-//     fn mul(self, rhs: &Tensor<T, (X1, X2)>) -> Self::Output {
-//         assert_eq!(self.len.1.into(), rhs.len.0.into());
-//         let len = (self.len.0, rhs.len.1);
-//         let mut data = Vec::with_capacity(len.product());
-//         for x2 in rhs.len.1.indices() {
-//             for x0 in self.len.0.indices() {
-//                 let mut sum = T::ZERO;
-//                 for x1 in self.len.1.indices() {
-//                     sum += self[(x0, x1)] * rhs[(x1, x2)];
-//                 }
-//                 data[len.flatten((x0, x2))] = sum;
-//             }
-//         }
-//         Tensor {
-//             data: data.into_boxed_slice(), len
-//         }
-//     }
-// }
-
-// impl<T, X> std::ops::Index<X> for Tensor<T, X> where X: IndexTuple {
-//     type Output = T;
-
-//     fn index(&self, index: X) -> &Self::Output {
-//         &self.data[self.len.flatten(index)]
-//     }
-// }
-
-// impl<T, X> std::ops::IndexMut<X> for Tensor<T, X> where X: IndexTuple {
-//     fn index_mut(&mut self, index: X) -> &mut Self::Output {
-//         &mut self.data[self.len.flatten(index)]
-//     }
-// }
-
-// impl<T, X0, X1> Tensor<T, (X0, X1)> where T: Zero + Copy, X0: Index, X1: Index {
-//     pub fn zeros(len: (X0, X1)) -> Self {
-//         let data = vec![T::ZERO; len.product()].into_boxed_slice();
-//         Self { data, len }
-//     }
-// }
-
 #[derive(Debug, Copy, Clone)]
 pub struct View<A, X> {
     data: A,
@@ -143,96 +92,111 @@ pub struct View<A, X> {
 }
 
 impl<A, X> View<A, X>
-where
-    X: IndexTuple,
 {
-    pub fn new<T>(data: A, len: X) -> Self
-    where
-        A: AsRef<[T]>,
-    {
-        assert_eq!(data.as_ref().len(), len.product());
+    pub fn new(data: A, len: X) -> Self where A: DerefSlice, X: IndexTuple {
+        assert_eq!(data.len(), len.product());
         Self { data, len }
     }
 
-    pub fn len(&self) -> X {
-        self.len
+    pub fn len(&self) -> &X {
+        &self.len
     }
 
     pub fn data(&self) -> &A {
         &self.data
     }
 
-    pub fn reindex<T, Y: IndexTuple, F: FnOnce(X) -> Y>(self, f: F) -> View<A, Y>
+    pub fn reindex<Y, F>(self, f: F) -> View<A, Y>
     where
-        A: AsRef<[T]>,
+        A: DerefSlice,
+        Y: IndexTuple,
+        F: FnOnce(X) -> Y,
     {
         let Self { data, len } = self;
         View::new(data, f(len))
     }
 
-    pub fn as_ref<T>(&self) -> View<&A, X>
+    pub fn as_ref(&self) -> View<&A, X>
     where
-        A: AsRef<[T]>,
+        X: IndexTuple,
+        for<'a> &'a A: DerefSlice,
     {
         View::new(&self.data, self.len)
     }
 
-    pub fn as_mut<T>(&mut self) -> View<&mut A, X>
+    pub fn as_mut(&mut self) -> View<&mut A, X>
     where
-        A: AsRef<[T]>,
+        X: IndexTuple,
+        for<'a> &'a mut A: DerefSliceMut,
     {
         View::new(&mut self.data, self.len)
     }
 
-    pub fn as_deref<T>(&self) -> View<&<A as Deref>::Target, X>
-    where
-        A: Deref,
-        <A as Deref>::Target: AsRef<[T]>,
-    {
+    pub fn as_deref(&self) -> View<&[A::Item], X> where X: IndexTuple, A: DerefSlice {
         View::new(self.data.deref(), self.len)
     }
 
-    pub fn as_deref_mut<T>(&mut self) -> View<&mut <A as Deref>::Target, X>
-    where
-        A: DerefMut,
-        <A as Deref>::Target: AsRef<[T]>,
-    {
+    pub fn as_deref_mut(&mut self) -> View<&mut [A::Item], X> where X: IndexTuple, A: DerefSliceMut {
         View::new(self.data.deref_mut(), self.len)
     }
 }
 
 impl<A, X> View<A, X>
 where
-    Self: std::ops::Index<X>,
     X: IndexTuple,
+    A: DerefSlice,
 {
-    pub fn iter_enumerate(
-        &self,
-    ) -> impl Iterator<Item = (X, &<Self as std::ops::Index<X>>::Output)> {
-        self.len.indices().map(|i| (i, &self[i]))
+    pub fn iter(&self) -> impl Iterator<Item = &<A as DerefSlice>::Item> {
+        self.data.iter()
+    }
+
+    pub fn iter_enumerate(&self) -> impl Iterator<Item = (X, &<A as DerefSlice>::Item)> {
+        // TODO: View assembly/benchmark computing the index vs zipping it.
+        let len = self.len;
+        self.data
+            .iter()
+            .enumerate()
+            .map_t0(move |index| len.unflatten(index))
     }
 }
 
-impl<A, X> std::ops::Index<X> for View<A, X>
+impl<A, X> View<A, X>
 where
-    A: std::ops::Deref,
-    A::Target: std::ops::Index<usize>,
     X: IndexTuple,
+    A: DerefSliceMut,
 {
-    type Output = <<A as std::ops::Deref>::Target as std::ops::Index<usize>>::Output;
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut <A as DerefSlice>::Item> {
+        self.data.iter_mut()
+    }
 
-    fn index(&self, index: X) -> &Self::Output {
-        &self.data.deref()[self.len.flatten(index)]
+    pub fn iter_mut_enumerate(
+        &mut self,
+    ) -> impl Iterator<Item = (X, &mut <A as DerefSlice>::Item)> {
+        let len = self.len;
+        self.data
+            .iter_mut()
+            .enumerate_with(move |index| len.unflatten(index))
     }
 }
 
 impl<A, X> std::ops::IndexMut<X> for View<A, X>
 where
-    A: std::ops::DerefMut,
-    A::Target: std::ops::IndexMut<usize>,
+    A: DerefSliceMut,
     X: IndexTuple,
 {
     fn index_mut(&mut self, index: X) -> &mut Self::Output {
         &mut self.data.deref_mut()[self.len.flatten(index)]
+    }
+}
+
+impl<A, X> std::ops::Index<X> for View<A, X>
+where
+    A: DerefSlice,
+    X: IndexTuple,
+{
+    type Output = <A as DerefSlice>::Item;
+
+    fn index(&self, index: X) -> &Self::Output {
+        &self.data.deref()[self.len.flatten(index)]
     }
 }

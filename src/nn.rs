@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use crate::engine::{Insertable, NodeId, Operations};
 use crate::impl_index;
 use crate::view::{Index as _, IndexTuple, View};
@@ -13,6 +15,7 @@ pub struct FullyConnectedLayer {
     vars: Box<[NodeId]>,
 }
 
+#[inline]
 pub fn batched_output_to_input((b, o): (B, O)) -> (B, I) {
     (b, o.reindex())
 }
@@ -24,7 +27,7 @@ impl FullyConnectedLayer {
         ops: &mut Operations,
         activation_fn: AF,
     ) -> Self {
-        let (batch_count, input_count) = inputs.len();
+        let (batch_count, input_count) = *inputs.len();
         let weight_dims = (input_count, output_count);
         let bias_dims = (output_count,);
 
@@ -61,33 +64,65 @@ impl FullyConnectedLayer {
         }
     }
 
+    #[inline]
     fn bias_offset(&self) -> usize {
         (self.input_count, self.output_count).product()
     }
 
+    #[inline]
     fn output_offset(&self) -> usize {
         self.bias_offset() + usize::from(self.output_count)
     }
 
+    #[inline]
+    fn weight_indices(&self) -> Range<usize> {
+        0..self.bias_offset()
+    }
+
+    #[inline]
+    fn bias_indices(&self) -> Range<usize> {
+        self.bias_offset()..self.output_offset()
+    }
+
+    #[inline]
+    fn output_indices(&self) -> std::ops::RangeFrom<usize> {
+        self.output_offset()..
+    }
+
+    #[inline]
     pub fn weights(&self) -> View<&[NodeId], (I, O)> {
-        View::new(
-            &self.vars[0..self.bias_offset()],
-            (self.input_count, self.output_count),
-        )
+        let range = self.weight_indices();
+        View::new(&self.vars[range], (self.input_count, self.output_count))
     }
 
+    #[inline]
+    pub fn weights_mut(&mut self) -> View<&mut [NodeId], (I, O)> {
+        let range = self.weight_indices();
+        View::new(&mut self.vars[range], (self.input_count, self.output_count))
+    }
+
+    #[inline]
     pub fn biases(&self) -> View<&[NodeId], (O,)> {
-        View::new(
-            &self.vars[self.bias_offset()..self.output_offset()],
-            (self.output_count,),
-        )
+        let range = self.bias_indices();
+        View::new(&self.vars[range], (self.output_count,))
     }
 
+    #[inline]
+    pub fn biases_mut(&mut self) -> View<&mut [NodeId], (O,)> {
+        let range = self.bias_indices();
+        View::new(&mut self.vars[range], (self.output_count,))
+    }
+
+    #[inline]
     pub fn outputs(&self) -> View<&[NodeId], (B, O)> {
-        View::new(
-            &self.vars[self.output_offset()..],
-            (self.batch_count, self.output_count),
-        )
+        let range = self.output_indices();
+        View::new(&self.vars[range], (self.batch_count, self.output_count))
+    }
+
+    #[inline]
+    pub fn outputs_mut(&mut self) -> View<&mut [NodeId], (B, O)> {
+        let range = self.output_indices();
+        View::new(&mut self.vars[range], (self.batch_count, self.output_count))
     }
 }
 
