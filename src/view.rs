@@ -15,7 +15,7 @@ impl<T> Index for T where T: Into<usize> + From<usize> + Copy {}
 macro_rules! impl_index {
     ($T:ident) => {
         #[derive(Debug, Copy, Clone)]
-        pub struct $T(usize);
+        pub struct $T(pub usize);
         impl From<usize> for $T {
             fn from(value: usize) -> Self {
                 $T(value)

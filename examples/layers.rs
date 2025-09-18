@@ -1,12 +1,7 @@
 use micrograd_rs::engine::{NodeId, Operations};
 use micrograd_rs::graphviz::export_to_dot;
-use micrograd_rs::nn::{self, FullyConnectedLayer};
-use micrograd_rs::view::{Index as _, IndexTuple as _, View};
-
-// Treat the output size of one layer as the input size to another layer.
-fn output_to_input((b, o): (nn::B, nn::O)) -> (nn::B, nn::I) {
-    (b, o.reindex())
-}
+use micrograd_rs::nn::{self};
+use micrograd_rs::view::{Index as _, View};
 
 fn main() {
     struct ModelParams {
@@ -26,17 +21,15 @@ fn main() {
     // Create a sample computation graph
     let mut ops = Operations::default();
 
-    let l0_len = (nn::B::from(params.batch_size), nn::O::from(params.l0_size));
-    let l0_data = ops.vars_vec(l0_len.product());
-    let l0 = View::new(&l0_data[..], l0_len);
-    let l1 = FullyConnectedLayer::new(
-        l0.reindex(output_to_input),
+    let l0 = nn::input_layer_vec((nn::B(params.batch_size), nn::O(params.l0_size)), &mut ops);
+    let l1 = nn::FullyConnectedLayer::new(
+        l0.as_deref().reindex(nn::batched_output_to_input),
         nn::O::from(params.l1_size),
         &mut ops,
         |x| x,
     );
-    let l2 = FullyConnectedLayer::new(
-        l1.outputs().reindex(output_to_input),
+    let l2 = nn::FullyConnectedLayer::new(
+        l1.outputs().reindex(nn::batched_output_to_input),
         nn::O::from(params.l2_size),
         &mut ops,
         |x| x,
@@ -80,8 +73,12 @@ fn main() {
     .unwrap();
 }
 
-fn label_layer<L, R>(layer: FullyConnectedLayer, layer_index: usize, mut labels: L, mut ranks: R)
-where
+fn label_layer<L, R>(
+    layer: nn::FullyConnectedLayer,
+    layer_index: usize,
+    mut labels: L,
+    mut ranks: R,
+) where
     L: std::ops::IndexMut<(NodeId,), Output = String>,
     R: std::ops::IndexMut<(NodeId,), Output = Option<usize>>,
 {

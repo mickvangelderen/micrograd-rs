@@ -13,6 +13,10 @@ pub struct FullyConnectedLayer {
     vars: Box<[NodeId]>,
 }
 
+pub fn batched_output_to_input((b, o): (B, O)) -> (B, I) {
+    (b, o.reindex())
+}
+
 impl FullyConnectedLayer {
     pub fn new<AF: Fn(NodeId) -> A, A: Insertable<Output = NodeId>>(
         inputs: View<&[NodeId], (B, I)>,
@@ -85,4 +89,9 @@ impl FullyConnectedLayer {
             (self.batch_count, self.output_count),
         )
     }
+}
+
+pub fn input_layer_vec(len: (B, O), ops: &mut Operations) -> View<Vec<NodeId>, (B, O)> {
+    let data = ops.vars_vec(len.product());
+    View::new(data, len)
 }
