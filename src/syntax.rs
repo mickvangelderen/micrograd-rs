@@ -21,6 +21,7 @@ macro_rules! call_with_unary_variants {
         $macro!(Exp2, exp_2);
         $macro!(ExpM1, exp_m1);
         $macro!(TanH, tanh);
+        $macro!(ReLU, relu);
     };
 }
 

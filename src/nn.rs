@@ -1,4 +1,4 @@
-use crate::engine::{NodeId, Operations};
+use crate::engine::{Insertable, NodeId, Operations};
 
 pub struct FullyConnectedLayer {
     pub input_count: usize,
@@ -7,7 +7,7 @@ pub struct FullyConnectedLayer {
 }
 
 impl FullyConnectedLayer {
-    pub fn new(inputs: &[NodeId], output_count: usize, ops: &mut Operations) -> Self {
+    pub fn new<AF: Fn(NodeId) -> A, A: Insertable<Output = NodeId>>(inputs: &[NodeId], output_count: usize, ops: &mut Operations, activation_fn: AF) -> Self {
         let input_count = inputs.len();
         let weight_count = input_count * output_count;
         let bias_count = output_count;
@@ -20,7 +20,10 @@ impl FullyConnectedLayer {
                 .iter()
                 .copied()
                 .zip((0..input_count).map(weight))
-                .fold(bias, |sum, (a, b)| ops.insert(sum + a * b));
+                .fold(bias, |sum, (a, b)| {
+                    let node = ops.insert(sum + a * b);
+                    ops.insert(activation_fn(node))
+                });
             vars.push(output);
         }
 

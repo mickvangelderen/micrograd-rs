@@ -6,8 +6,8 @@ fn main() {
     // Create a sample computation graph
     let mut ops = Operations::default();
     let l0 = ops.vars::<2>();
-    let l1 = FullyConnectedLayer::new(&l0, 5, &mut ops);
-    let l2 = FullyConnectedLayer::new(l1.outputs(), 3, &mut ops);
+    let l1 = FullyConnectedLayer::new(&l0, 5, &mut ops, |x| x);
+    let l2 = FullyConnectedLayer::new(l1.outputs(), 3, &mut ops, |x| x);
 
     let mut labels: Vec<_> = ops.nodes().map(|_| String::default()).collect();
     let mut ranks: Vec<Option<usize>> = ops.nodes().map(|_| None).collect();

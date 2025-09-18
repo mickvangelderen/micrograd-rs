@@ -156,5 +156,6 @@ fn unary_op_to_str(op: Unary) -> &'static str {
         Unary::Exp2 => "2^x",
         Unary::ExpM1 => "exp(x)-1",
         Unary::TanH => "tanh(x)",
+        Unary::ReLU => "ReLU(x)",
     }
 }

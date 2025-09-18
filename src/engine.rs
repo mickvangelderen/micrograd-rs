@@ -118,6 +118,7 @@ pub enum Unary {
     Exp2,
     ExpM1,
     TanH,
+    ReLU,
 }
 
 impl Unary {
@@ -133,6 +134,7 @@ impl Unary {
             Unary::Exp2 => a.exp2(),
             Unary::ExpM1 => a.exp_m1(),
             Unary::TanH => a.tanh(),
+            Unary::ReLU => a.max(0.0),
         }
     }
 
@@ -150,6 +152,7 @@ impl Unary {
             Unary::Exp2 => f64::consts::LN_2 * b,
             Unary::ExpM1 => a.exp(), // or b + 1
             Unary::TanH => 1.0 - b.powi(2),
+            Unary::ReLU => if a > 0.0 { 1.0 } else { 0.0 },
         }
     }
 }
