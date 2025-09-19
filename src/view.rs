@@ -190,6 +190,33 @@ where
     }
 }
 
+// NOTE(mickvangelderen): I am not sure we can abstract over borrowed and owned implementations so easily here.
+impl<'a, T, X> IntoIterator for View<&'a [T], X>
+where
+    X: IndexTuple,
+{
+    type Item = &'a T;
+
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter()
+    }
+}
+
+impl<'a, T, X> IntoIterator for View<&'a mut [T], X>
+where
+    X: IndexTuple,
+{
+    type Item = &'a mut T;
+
+    type IntoIter = std::slice::IterMut<'a, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.iter_mut()
+    }
+}
+
 impl<A, X> std::ops::IndexMut<X> for View<A, X>
 where
     A: DerefSliceMut,

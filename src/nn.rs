@@ -106,6 +106,14 @@ impl FullyConnectedLayer {
         let range = self.output_indices();
         View::new(&self.vars[range], (self.batch_count, self.output_count))
     }
+
+    #[inline]
+    pub fn parameters(&self) -> impl Iterator<Item = NodeId> {
+        self.weights()
+            .into_iter()
+            .copied()
+            .chain(self.biases().into_iter().copied())
+    }
 }
 
 pub fn input_layer_vec(len: (B, O), ops: &mut Operations) -> View<Vec<NodeId>, (B, O)> {
