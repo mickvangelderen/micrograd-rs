@@ -43,6 +43,33 @@ macro_rules! impl_index_node_id {
 
 macro_rules! impl_buffer {
     ($T:ty, $I: ty) => {
+        impl $T {
+            #[inline]
+            pub fn iter(&self) -> <&Self as IntoIterator>::IntoIter {
+                IntoIterator::into_iter(self)
+            }
+
+            #[inline]
+            pub fn iter_mut(&mut self) -> <&mut Self as IntoIterator>::IntoIter {
+                IntoIterator::into_iter(self)
+            }
+
+            #[inline]
+            pub fn len(&self) -> usize {
+                self.0.len()
+            }
+
+            #[inline]
+            pub fn is_empty(&self) -> bool {
+                self.0.is_empty()
+            }
+
+            #[inline]
+            pub fn nodes(&self) -> impl ExactSizeIterator<Item = NodeId> + DoubleEndedIterator {
+                (0..self.len()).map(NodeId::from)
+            }
+        }
+
         impl IntoIterator for $T {
             type Item = $I;
             type IntoIter = <Vec<$I> as IntoIterator>::IntoIter;
@@ -70,33 +97,6 @@ macro_rules! impl_buffer {
             #[inline]
             fn into_iter(self) -> Self::IntoIter {
                 self.0.iter_mut()
-            }
-        }
-
-        impl $T {
-            #[inline]
-            pub fn iter(&self) -> <&Self as IntoIterator>::IntoIter {
-                IntoIterator::into_iter(self)
-            }
-
-            #[inline]
-            pub fn iter_mut(&mut self) -> <&mut Self as IntoIterator>::IntoIter {
-                IntoIterator::into_iter(self)
-            }
-
-            #[inline]
-            pub fn len(&self) -> usize {
-                self.0.len()
-            }
-
-            #[inline]
-            pub fn is_empty(&self) -> bool {
-                self.0.is_empty()
-            }
-
-            #[inline]
-            pub fn nodes(&self) -> impl ExactSizeIterator<Item = NodeId> + DoubleEndedIterator {
-                (0..self.len()).map(NodeId::from)
             }
         }
     };
@@ -296,6 +296,11 @@ impl Values {
     #[inline]
     pub fn resize(&mut self, new_len: usize, value: f64) {
         self.0.resize(new_len, value);
+    }
+
+    #[inline]
+    pub fn fill(&mut self, value: f64) {
+        self.0.fill(value)
     }
 }
 
