@@ -96,33 +96,15 @@ impl FullyConnectedLayer {
     }
 
     #[inline]
-    pub fn weights_mut(&mut self) -> View<&mut [NodeId], (I, O)> {
-        let range = self.weight_indices();
-        View::new(&mut self.vars[range], (self.input_count, self.output_count))
-    }
-
-    #[inline]
     pub fn biases(&self) -> View<&[NodeId], (O,)> {
         let range = self.bias_indices();
         View::new(&self.vars[range], (self.output_count,))
     }
 
     #[inline]
-    pub fn biases_mut(&mut self) -> View<&mut [NodeId], (O,)> {
-        let range = self.bias_indices();
-        View::new(&mut self.vars[range], (self.output_count,))
-    }
-
-    #[inline]
     pub fn outputs(&self) -> View<&[NodeId], (B, O)> {
         let range = self.output_indices();
         View::new(&self.vars[range], (self.batch_count, self.output_count))
-    }
-
-    #[inline]
-    pub fn outputs_mut(&mut self) -> View<&mut [NodeId], (B, O)> {
-        let range = self.output_indices();
-        View::new(&mut self.vars[range], (self.batch_count, self.output_count))
     }
 }
 
