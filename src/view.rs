@@ -91,9 +91,12 @@ pub struct View<A, X> {
     len: X,
 }
 
-impl<A, X> View<A, X>
-{
-    pub fn new(data: A, len: X) -> Self where A: DerefSlice, X: IndexTuple {
+impl<A, X> View<A, X> {
+    pub fn new(data: A, len: X) -> Self
+    where
+        A: DerefSlice,
+        X: IndexTuple,
+    {
         assert_eq!(data.len(), len.product());
         Self { data, len }
     }
@@ -132,11 +135,19 @@ impl<A, X> View<A, X>
         View::new(&mut self.data, self.len)
     }
 
-    pub fn as_deref(&self) -> View<&[A::Item], X> where X: IndexTuple, A: DerefSlice {
+    pub fn as_deref(&self) -> View<&[A::Item], X>
+    where
+        X: IndexTuple,
+        A: DerefSlice,
+    {
         View::new(self.data.deref(), self.len)
     }
 
-    pub fn as_deref_mut(&mut self) -> View<&mut [A::Item], X> where X: IndexTuple, A: DerefSliceMut {
+    pub fn as_deref_mut(&mut self) -> View<&mut [A::Item], X>
+    where
+        X: IndexTuple,
+        A: DerefSliceMut,
+    {
         View::new(self.data.deref_mut(), self.len)
     }
 }
