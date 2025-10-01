@@ -5,3 +5,12 @@ version = 4
 [[package]]
 name = "micrograd-rs"
 version = "0.1.0"
+dependencies = [
+ "split-spare",
+]
+
+[[package]]
+name = "split-spare"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f5bfa582e174147d933e3f3eb8569cbbb3869ce6505788d81632ed02d5dda543"

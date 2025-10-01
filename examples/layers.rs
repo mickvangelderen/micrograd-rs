@@ -1,7 +1,9 @@
-use micrograd_rs::engine::{NodeId, Operations};
-use micrograd_rs::graphviz::export_to_dot;
-use micrograd_rs::nn::{self};
-use micrograd_rs::view::{Index as _, View};
+use micrograd_rs::{
+    engine::{NodeId, Operations},
+    graphviz::export_to_dot,
+    nn::{self},
+    view::{Index as _, View},
+};
 
 fn main() {
     struct ModelParams {
@@ -43,20 +45,13 @@ fn main() {
         (NodeId::from(ops.len()),),
     );
     let mut ranks = View::new(
-        ops.nodes()
-            .map(|_| None)
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
+        ops.nodes().map(|_| None).collect::<Vec<_>>().into_boxed_slice(),
         (NodeId::from(ops.len()),),
     );
 
     for b in l0.len().0.indices() {
         for o in l0.len().1.indices() {
-            labels[(l0[(b, o)],)] = format!(
-                "layer0 batch{b} activation{o}",
-                b = usize::from(b),
-                o = usize::from(o)
-            );
+            labels[(l0[(b, o)],)] = format!("layer0 batch{b} activation{o}", b = usize::from(b), o = usize::from(o));
             ranks[(l0[(b, o)],)] = Some(0);
         }
     }
@@ -73,12 +68,8 @@ fn main() {
     .unwrap();
 }
 
-fn label_layer<L, R>(
-    layer: nn::FullyConnectedLayer,
-    layer_index: usize,
-    mut labels: L,
-    mut ranks: R,
-) where
+fn label_layer<L, R>(layer: nn::FullyConnectedLayer, layer_index: usize, mut labels: L, mut ranks: R)
+where
     L: std::ops::IndexMut<(NodeId,), Output = String>,
     R: std::ops::IndexMut<(NodeId,), Output = Option<usize>>,
 {

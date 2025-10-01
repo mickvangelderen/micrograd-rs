@@ -1,5 +1,7 @@
-use crate::deref_slice::{DerefSlice, DerefSliceMut};
-use crate::iter_ext::IteratorExt as _;
+use crate::{
+    deref_slice::{DerefSlice, DerefSliceMut},
+    iter_ext::IteratorExt as _,
+};
 
 pub trait Index: Into<usize> + From<usize> + Eq + PartialEq + Copy {
     fn indices(self) -> impl Iterator<Item = Self> {
@@ -68,10 +70,7 @@ where
     }
 
     fn unflatten(&self, index: usize) -> Self {
-        (
-            X0::from(index / self.0.into()),
-            X1::from(index % self.0.into()),
-        )
+        (X0::from(index / self.0.into()), X1::from(index % self.0.into()))
     }
 
     fn product(&self) -> usize {
@@ -79,9 +78,7 @@ where
     }
 
     fn indices(&self) -> impl Iterator<Item = Self> {
-        self.1
-            .indices()
-            .flat_map(|i1| self.0.indices().map(move |i0| (i0, i1)))
+        self.1.indices().flat_map(|i1| self.0.indices().map(move |i0| (i0, i1)))
     }
 }
 
@@ -164,10 +161,7 @@ where
     pub fn iter_enumerate(&self) -> impl Iterator<Item = (X, &<A as DerefSlice>::Item)> {
         // TODO: View assembly/benchmark computing the index vs zipping it.
         let len = self.len;
-        self.data
-            .iter()
-            .enumerate()
-            .map_t0(move |index| len.unflatten(index))
+        self.data.iter().enumerate().map_t0(move |index| len.unflatten(index))
     }
 }
 
@@ -180,13 +174,9 @@ where
         self.data.iter_mut()
     }
 
-    pub fn iter_mut_enumerate(
-        &mut self,
-    ) -> impl Iterator<Item = (X, &mut <A as DerefSlice>::Item)> {
+    pub fn iter_mut_enumerate(&mut self) -> impl Iterator<Item = (X, &mut <A as DerefSlice>::Item)> {
         let len = self.len;
-        self.data
-            .iter_mut()
-            .enumerate_with(move |index| len.unflatten(index))
+        self.data.iter_mut().enumerate_with(move |index| len.unflatten(index))
     }
 }
 

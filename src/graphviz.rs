@@ -1,5 +1,6 @@
-use crate::engine::{Binary, NodeId, Op, Operations, Unary};
 use std::io::Write;
+
+use crate::engine::{Binary, NodeId, Op, Operations, Unary};
 
 pub fn export_to_dot<'l, W: Write, L: Fn(NodeId) -> &'l str, R: Fn(NodeId) -> Option<usize>>(
     ops: &Operations,
@@ -14,7 +15,7 @@ pub fn export_to_dot<'l, W: Write, L: Fn(NodeId) -> &'l str, R: Fn(NodeId) -> Op
     let should_emit_value_node = |node: NodeId| -> bool {
         match ops[node] {
             Op::Nullary(crate::engine::Nullary::Var) => true, // Always emit variables
-            _ => !labels(node).is_empty(), // Only emit value nodes if they have a label
+            _ => !labels(node).is_empty(),                    // Only emit value nodes if they have a label
         }
     };
 
@@ -89,16 +90,8 @@ pub fn export_to_dot<'l, W: Write, L: Fn(NodeId) -> &'l str, R: Fn(NodeId) -> Op
                 // Nothing to do.
             }
             Op::Unary(_, input) => {
-                let input_source = if should_emit_value_node(input) {
-                    "n"
-                } else {
-                    "op"
-                };
-                writeln!(
-                    writer,
-                    "    {input_source}{} -> op{index};",
-                    usize::from(input)
-                )?;
+                let input_source = if should_emit_value_node(input) { "n" } else { "op" };
+                writeln!(writer, "    {input_source}{} -> op{index};", usize::from(input))?;
 
                 if should_emit_value_node(node) {
                     writeln!(writer, "    op{index} -> n{index};")?;

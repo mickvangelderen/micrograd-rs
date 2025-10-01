@@ -241,10 +241,7 @@ impl Insertable for Id {
 
     #[inline]
     fn insert_into(self, ops: &mut Operations) -> NodeId {
-        assert!(
-            self.0 < ops.len(),
-            "Are you using a node from another graph?"
-        );
+        assert!(self.0 < ops.len(), "Are you using a node from another graph?");
         Expr(self)
     }
 }
@@ -358,10 +355,7 @@ impl Operations {
     }
 
     #[inline]
-    pub fn extend<I>(
-        &mut self,
-        collection: I,
-    ) -> impl Iterator<Item = <I::Item as Insertable>::Output>
+    pub fn extend<I>(&mut self, collection: I) -> impl Iterator<Item = <I::Item as Insertable>::Output>
     where
         I: IntoIterator,
         I::Item: Insertable,
@@ -403,20 +397,12 @@ impl Operations {
                     // Nothing to do.
                 }
                 Op::Unary(unary, input) => values[output] = unary.forward(values[input]),
-                Op::Binary(binary, input) => {
-                    values[output] = binary.forward(values[input.0], values[input.1])
-                }
+                Op::Binary(binary, input) => values[output] = binary.forward(values[input.0], values[input.1]),
             }
         }
     }
 
-    pub fn backward(
-        &self,
-        values: &Values,
-        gradients: &mut Gradients,
-        target: NodeId,
-        gradient: f64,
-    ) {
+    pub fn backward(&self, values: &Values, gradients: &mut Gradients, target: NodeId, gradient: f64) {
         debug_assert_eq!(self.len(), values.len());
         debug_assert_eq!(self.len(), gradients.len());
 
@@ -440,8 +426,7 @@ impl Operations {
                     gradients[i0] += unary.backward(values[i0], values[o]) * gradients_o;
                 }
                 Op::Binary(binary, (i0, i1)) => {
-                    let (gradients_i0, gradients_i1) =
-                        binary.backward(values[i0], values[i1], values[o]);
+                    let (gradients_i0, gradients_i1) = binary.backward(values[i0], values[i1], values[o]);
                     gradients[i0] += gradients_i0 * gradients_o;
                     gradients[i1] += gradients_i1 * gradients_o;
                 }

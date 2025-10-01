@@ -1,8 +1,12 @@
 use std::ops::Range;
 
-use crate::engine::{Insertable, NodeId, Operations};
-use crate::impl_index;
-use crate::view::{Index as _, IndexTuple, View};
+use split_spare::SplitSpare;
+
+use crate::{
+    engine::{Insertable, NodeId, Operations},
+    impl_index,
+    view::{Index as _, IndexTuple, View},
+};
 
 impl_index!(I);
 impl_index!(B);
@@ -38,23 +42,21 @@ impl FullyConnectedLayer {
 
         let mut vars = ops.vars_vec(output_offset);
 
-        vars.reserve((batch_count, output_count).product());
-        for (batch_index, output_index) in (batch_count, output_count).indices() {
-            let weights = View::new(&vars[0..bias_offset], weight_dims);
-            let biases = View::new(&vars[bias_offset..output_offset], bias_dims);
-
-            let input_iter = input_count.indices().map(|i| inputs[(batch_index, i)]);
-            let weight_iter = input_count.indices().map(|i| weights[(i, output_index)]);
-            let output = std::iter::zip(input_iter, weight_iter).fold(
-                biases[(output_index,)],
-                |sum, (a, b)| {
-                    let node = ops.insert(sum + a * b);
-                    ops.insert(activation_fn(node))
-                },
-            );
-
-            vars.push(output);
-        }
+        let (init, mut spare) = vars.reserve_split_spare((batch_count, output_count).product());
+        let weights = View::new(&init[0..bias_offset], weight_dims);
+        let biases = View::new(&init[bias_offset..output_offset], bias_dims);
+        spare.extend(
+            (batch_count, output_count)
+                .indices()
+                .map(|(batch_index, output_index)| {
+                    let input_iter = input_count.indices().map(|i| inputs[(batch_index, i)]);
+                    let weight_iter = input_count.indices().map(|i| weights[(i, output_index)]);
+                    std::iter::zip(input_iter, weight_iter).fold(biases[(output_index,)], |sum, (a, b)| {
+                        let node = ops.insert(sum + a * b);
+                        ops.insert(activation_fn(node))
+                    })
+                }),
+        );
 
         Self {
             batch_count,

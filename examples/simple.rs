@@ -1,5 +1,7 @@
-use micrograd_rs::engine::{NodeId, Operations, Values};
-use micrograd_rs::graphviz::export_to_dot;
+use micrograd_rs::{
+    engine::{NodeId, Operations, Values},
+    graphviz::export_to_dot,
+};
 
 fn main() {
     // Create a sample computation graph
