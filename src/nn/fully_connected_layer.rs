@@ -3,14 +3,15 @@ use std::ops::Range;
 use split_spare::SplitSpare;
 
 use crate::{
-    engine::{Insertable, NodeId, Operations},
-    impl_index,
+    engine::{Gradients, Insertable, NodeId, Operations, Values},
+    nn::{B, I, O},
     view::{Index as _, IndexTuple, View},
 };
 
-impl_index!(I);
-impl_index!(B);
-impl_index!(O);
+#[derive(Debug, Clone)]
+pub struct FullyConnectedLayerParams {
+    pub size: usize,
+}
 
 pub struct FullyConnectedLayer {
     pub batch_count: B,
@@ -115,6 +116,27 @@ impl FullyConnectedLayer {
             .into_iter()
             .copied()
             .chain(self.biases().into_iter().copied())
+    }
+
+    #[inline]
+    pub fn init_parameters(&self, values: &mut Values, rng: &mut impl rand::Rng) {
+        use rand::distr::Distribution;
+
+        let dist = rand::distr::Uniform::new(-0.05, 0.05).unwrap();
+
+        for (weight, value) in self.weights().iter().copied().zip(dist.sample_iter(rng)) {
+            values[weight] = value;
+        }
+        for bias in self.biases().iter().copied() {
+            values[bias] = 0.0;
+        }
+    }
+
+    #[inline]
+    pub fn update_weights(&self, values: &mut Values, gradients: &Gradients) {
+        for node in self.parameters() {
+            values[node] -= gradients[node];
+        }
     }
 }
 
