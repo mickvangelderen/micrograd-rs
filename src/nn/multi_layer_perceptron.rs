@@ -1,8 +1,13 @@
 use crate::{
     engine::{Expr, Gradients, NodeId, Operations, Values},
-    nn::{self, FullyConnectedLayer, FullyConnectedLayerParams},
+    nn::{self, FullyConnectedLayer},
     view::View,
 };
+
+#[derive(Debug, Clone)]
+pub struct FullyConnectedLayerParams {
+    pub output_size: nn::O,
+}
 
 #[derive(Debug, Clone)]
 pub struct MultiLayerPerceptronParams<TLayers> {
@@ -10,33 +15,37 @@ pub struct MultiLayerPerceptronParams<TLayers> {
 }
 
 pub struct MultiLayerPerceptron {
-    pub layers: Vec<FullyConnectedLayer>,
+    pub layers: Box<[FullyConnectedLayer]>,
 }
 
 impl MultiLayerPerceptron {
-    pub fn new<'a, TLayers>(
+    pub fn new<TLayerParams: ?Sized>(
         input_layer: View<&[NodeId], (nn::B, nn::O)>,
-        params: MultiLayerPerceptronParams<TLayers>,
+        layer_params: &TLayerParams,
         ops: &mut Operations,
     ) -> Self
     where
-        TLayers: IntoIterator<Item = &'a FullyConnectedLayerParams>,
+        for<'a> &'a TLayerParams: IntoIterator<Item = &'a FullyConnectedLayerParams>,
     {
-        let layer_params = params.layers.into_iter();
+        let layer_params = layer_params.into_iter();
         let min_layer_count = layer_params.size_hint().0;
-        let layers = layer_params.fold(Vec::with_capacity(min_layer_count), |mut layers, params| {
-            let prev_output = layers
-                .last()
-                .map_or(input_layer, |layer: &FullyConnectedLayer| layer.outputs());
-            let layer = FullyConnectedLayer::new(
-                prev_output.as_deref().reindex(nn::batched_output_to_input),
-                nn::O(params.size),
-                ops,
-                Expr::relu,
-            );
-            layers.push(layer);
-            layers
-        });
+        let layers = layer_params
+            .fold(Vec::with_capacity(min_layer_count), |mut layers, params| {
+                let prev_output = layers
+                    .last()
+                    .map_or(input_layer, |layer: &FullyConnectedLayer| layer.outputs());
+                let layer = FullyConnectedLayer::new(
+                    prev_output.as_deref().reindex(nn::batched_output_to_input),
+                    params.output_size,
+                    ops,
+                    Expr::relu,
+                );
+                layers.push(layer);
+                layers
+            })
+            .into_boxed_slice();
+
+        debug_assert!(!layers.is_empty(), "MLP must have at least one layer");
 
         Self { layers }
     }
@@ -57,10 +66,7 @@ impl MultiLayerPerceptron {
 
     #[inline]
     pub fn outputs(&self) -> View<&[NodeId], (nn::B, nn::O)> {
-        self.layers
-            .last()
-            .expect("Network must have at least one layer")
-            .outputs()
+        self.layers.last().expect("MLP must have at least one layer").outputs()
     }
 
     #[inline]

@@ -49,8 +49,8 @@ fn main() {
         (NodeId::from(ops.len()),),
     );
 
-    for b in l0.len().0.indices() {
-        for o in l0.len().1.indices() {
+    for b in l0.shape().0.indices() {
+        for o in l0.shape().1.indices() {
             labels[(l0[(b, o)],)] = format!("layer0 batch{b} activation{o}", b = usize::from(b), o = usize::from(o));
             ranks[(l0[(b, o)],)] = Some(0);
         }

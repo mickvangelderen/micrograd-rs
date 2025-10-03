@@ -32,11 +32,78 @@ macro_rules! impl_index {
     };
 }
 
+#[must_use = "iterators are lazy and do nothing unless consumed"]
+pub struct IndexTupleIter<X> {
+    index: usize,
+    shape: X,
+}
+
+impl<X> IndexTupleIter<X> {
+    fn new(shape: X) -> Self {
+        IndexTupleIter {
+            index: Default::default(),
+            shape,
+        }
+    }
+}
+
+impl<X> Iterator for IndexTupleIter<X>
+where
+    X: IndexTuple,
+{
+    type Item = X;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.shape.product() {
+            let next = self.shape.unflatten(self.index);
+            self.index += 1;
+            Some(next)
+        } else {
+            None
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remainder = self.shape.product().wrapping_sub(self.index);
+        (remainder, Some(remainder))
+    }
+
+    fn count(self) -> usize
+    where
+        Self: Sized,
+    {
+        self.shape.product().wrapping_sub(self.index)
+    }
+
+    fn last(mut self) -> Option<Self::Item>
+    where
+        Self: Sized,
+    {
+        if self.index < self.shape.product() {
+            self.index = self.shape.product() - 1;
+        }
+        self.next()
+    }
+
+    fn nth(&mut self, n: usize) -> Option<Self::Item> {
+        if n > 0 {
+            let remainder = self.shape.product().wrapping_sub(self.index);
+            self.index += std::cmp::min(n, remainder);
+        }
+        self.next()
+    }
+}
+
+impl<X> std::iter::FusedIterator for IndexTupleIter<X> where X: IndexTuple {}
+impl<X> ExactSizeIterator for IndexTupleIter<X> where X: IndexTuple {}
+
 pub trait IndexTuple: Copy {
     fn flatten(&self, index: Self) -> usize;
     fn unflatten(&self, index: usize) -> Self;
     fn product(&self) -> usize;
-    fn indices(&self) -> impl Iterator<Item = Self>;
+    fn indices(self) -> impl Iterator<Item = Self> {
+        IndexTupleIter::new(self)
+    }
 }
 
 impl<X0> IndexTuple for (X0,)
@@ -54,10 +121,6 @@ where
     fn product(&self) -> usize {
         self.0.into()
     }
-
-    fn indices(&self) -> impl Iterator<Item = Self> {
-        self.0.indices().map(|i0| (i0,))
-    }
 }
 
 impl<X0, X1> IndexTuple for (X0, X1)
@@ -70,36 +133,35 @@ where
     }
 
     fn unflatten(&self, index: usize) -> Self {
-        (X0::from(index / self.0.into()), X1::from(index % self.0.into()))
+        (X0::from(index / self.1.into()), X1::from(index % self.1.into()))
     }
 
     fn product(&self) -> usize {
         self.0.into() * self.1.into()
-    }
-
-    fn indices(&self) -> impl Iterator<Item = Self> {
-        self.1.indices().flat_map(|i1| self.0.indices().map(move |i0| (i0, i1)))
     }
 }
 
 #[derive(Debug, Copy, Clone)]
 pub struct View<A, X> {
     data: A,
-    len: X,
+    shape: X,
 }
 
 impl<A, X> View<A, X> {
-    pub fn new(data: A, len: X) -> Self
+    pub fn new(data: A, shape: X) -> Self
     where
         A: DerefSlice,
         X: IndexTuple,
     {
-        assert_eq!(data.len(), len.product());
-        Self { data, len }
+        assert_eq!(data.len(), shape.product());
+        Self { data, shape }
     }
 
-    pub fn len(&self) -> &X {
-        &self.len
+    pub fn shape(&self) -> X
+    where
+        X: Copy,
+    {
+        self.shape
     }
 
     pub fn data(&self) -> &A {
@@ -112,8 +174,8 @@ impl<A, X> View<A, X> {
         Y: IndexTuple,
         F: FnOnce(X) -> Y,
     {
-        let Self { data, len } = self;
-        View::new(data, f(len))
+        let Self { data, shape } = self;
+        View::new(data, f(shape))
     }
 
     pub fn as_ref(&self) -> View<&A, X>
@@ -121,7 +183,7 @@ impl<A, X> View<A, X> {
         X: IndexTuple,
         for<'a> &'a A: DerefSlice,
     {
-        View::new(&self.data, self.len)
+        View::new(&self.data, self.shape)
     }
 
     pub fn as_mut(&mut self) -> View<&mut A, X>
@@ -129,7 +191,7 @@ impl<A, X> View<A, X> {
         X: IndexTuple,
         for<'a> &'a mut A: DerefSliceMut,
     {
-        View::new(&mut self.data, self.len)
+        View::new(&mut self.data, self.shape)
     }
 
     pub fn as_deref(&self) -> View<&[A::Item], X>
@@ -137,7 +199,7 @@ impl<A, X> View<A, X> {
         X: IndexTuple,
         A: DerefSlice,
     {
-        View::new(self.data.deref(), self.len)
+        View::new(self.data.deref(), self.shape)
     }
 
     pub fn as_deref_mut(&mut self) -> View<&mut [A::Item], X>
@@ -145,7 +207,7 @@ impl<A, X> View<A, X> {
         X: IndexTuple,
         A: DerefSliceMut,
     {
-        View::new(self.data.deref_mut(), self.len)
+        View::new(self.data.deref_mut(), self.shape)
     }
 }
 
@@ -160,8 +222,8 @@ where
 
     pub fn iter_enumerate(&self) -> impl Iterator<Item = (X, &<A as DerefSlice>::Item)> {
         // TODO: View assembly/benchmark computing the index vs zipping it.
-        let len = self.len;
-        self.data.iter().enumerate().map_t0(move |index| len.unflatten(index))
+        let shape = self.shape;
+        self.data.iter().enumerate().map_t0(move |index| shape.unflatten(index))
     }
 }
 
@@ -175,8 +237,8 @@ where
     }
 
     pub fn iter_mut_enumerate(&mut self) -> impl Iterator<Item = (X, &mut <A as DerefSlice>::Item)> {
-        let len = self.len;
-        self.data.iter_mut().enumerate_with(move |index| len.unflatten(index))
+        let shape = self.shape;
+        self.data.iter_mut().enumerate_with(move |index| shape.unflatten(index))
     }
 }
 
@@ -213,7 +275,7 @@ where
     X: IndexTuple,
 {
     fn index_mut(&mut self, index: X) -> &mut Self::Output {
-        &mut self.data.deref_mut()[self.len.flatten(index)]
+        &mut self.data.deref_mut()[self.shape.flatten(index)]
     }
 }
 
@@ -225,6 +287,53 @@ where
     type Output = <A as DerefSlice>::Item;
 
     fn index(&self, index: X) -> &Self::Output {
-        &self.data.deref()[self.len.flatten(index)]
+        &self.data.deref()[self.shape.flatten(index)]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    impl_index!(A);
+    impl_index!(B);
+
+    #[test]
+    fn index_tuple_indices_iter_empty() {
+        let shape = (A(0), B(0));
+        assert!(shape.indices().next().is_none());
+        assert_eq!(shape.indices().size_hint(), (0, Some(0)));
+        assert_eq!(shape.indices().count(), 0);
+        assert!(shape.indices().last().is_none());
+        #[allow(clippy::iter_nth_zero)]
+        {
+            assert!(shape.indices().nth(0).is_none());
+        }
+        assert!(shape.indices().nth(1).is_none());
+    }
+
+    #[test]
+    fn index_tuple_indices_iter() {
+        let shape = (A(2), B(3));
+        {
+            let mut iter = shape.indices();
+            assert_eq!(iter.next(), Some((A(0), B(0))));
+            assert_eq!(iter.next(), Some((A(0), B(1))));
+            assert_eq!(iter.next(), Some((A(0), B(2))));
+            assert_eq!(iter.next(), Some((A(1), B(0))));
+            assert_eq!(iter.next(), Some((A(1), B(1))));
+            assert_eq!(iter.next(), Some((A(1), B(2))));
+            assert_eq!(iter.next(), None);
+        }
+        assert_eq!(shape.indices().size_hint(), (6, Some(6)));
+        {
+            let iter = shape.indices();
+            assert_eq!(iter.count(), 6);
+            let mut iter = shape.indices();
+            iter.next();
+            assert_eq!(iter.count(), 5);
+        }
+        assert_eq!(shape.indices().last(), Some((A(1), B(2))));
+        assert_eq!(shape.indices().nth(3), Some((A(1), B(0))));
     }
 }

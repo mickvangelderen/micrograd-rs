@@ -18,8 +18,8 @@ pub trait Deserialize {
 
 impl Serialize for FullyConnectedLayer {
     fn serialize(&self, values: &Values, writer: &mut impl Write) -> Result<()> {
-        writer.write_u64::<LE>(usize::from(self.input_count) as u64)?;
-        writer.write_u64::<LE>(usize::from(self.output_count) as u64)?;
+        writer.write_u64::<LE>(usize::from(self.input_size) as u64)?;
+        writer.write_u64::<LE>(usize::from(self.output_size) as u64)?;
 
         for &node in self.weights().iter() {
             writer.write_f64::<LE>(values[node])?;
@@ -36,7 +36,7 @@ impl Deserialize for FullyConnectedLayer {
         let input_count = nn::I(reader.read_u64::<LE>()? as usize);
         let output_count = nn::O(reader.read_u64::<LE>()? as usize);
 
-        let expected = (self.input_count, self.output_count);
+        let expected = (self.input_size, self.output_size);
         let actual = (input_count, output_count);
         if expected != actual {
             std::io::Error::new(
