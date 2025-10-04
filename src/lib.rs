@@ -6,3 +6,4 @@ pub mod syntax;
 pub mod view;
 
 pub mod iter_ext;
+pub mod strided;
