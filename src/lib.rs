@@ -7,3 +7,4 @@ pub mod view;
 
 pub mod iter_ext;
 pub mod strided;
+pub mod strided_core;
